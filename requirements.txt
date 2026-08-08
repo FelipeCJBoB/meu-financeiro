@@ -1,0 +1,5 @@
+nicegui>=2.0
+sqlmodel>=0.0.22
+pyinstaller>=6.0
+plotly>=5.24
+pywebview>=5.0
