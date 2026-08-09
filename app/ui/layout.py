@@ -15,13 +15,19 @@ NAV_ITEMS = [
     ("/perfil", "person", "Perfil"),
 ]
 
-RAIL_WIDTH = 64
-RAIL_EXPANDED = 216
+RAIL_WIDTH = 216
 
 
 def _sidebar_css() -> None:
-    """Collapsed rail that widens on hover - the adaptive-navigation pattern for
-    wide screens, which keeps horizontal space for content instead of a top bar."""
+    """A fixed sidebar, always showing icon plus label.
+
+    It used to sit collapsed at 64px and widen on hover, but the expansion floated
+    over the page and covered whatever was underneath. Pushing the content sideways
+    on hover would be worse: an accidental pass of the mouse would reflow the page
+    and force every chart to redraw. At 216px on a 2560px screen the sidebar costs
+    8% of the width and buys permanently readable labels - icon-only navigation
+    makes the user guess what each symbol means.
+    """
     ui.add_head_html(f"""
     <style>
       .rail {{
@@ -32,14 +38,12 @@ def _sidebar_css() -> None:
         display: flex; flex-direction: column;
         padding: 14px 0; gap: 4px;
         overflow: hidden; white-space: nowrap;
-        transition: width 180ms ease-out;
         z-index: 1000;
       }}
-      .rail:hover {{ width: {RAIL_EXPANDED}px; box-shadow: 4px 0 24px rgba(0,0,0,0.18); }}
       .rail-item {{
         display: flex; align-items: center; gap: 14px;
         height: 46px; min-height: 46px;
-        padding: 0 {(RAIL_WIDTH - 24) // 2}px;
+        padding: 0 20px;
         color: var(--app-text2); cursor: pointer;
         border-left: 3px solid transparent;
         transition: background 140ms ease-out, color 140ms ease-out;
@@ -50,11 +54,7 @@ def _sidebar_css() -> None:
         background: var(--app-s2);
         border-left-color: var(--app-accent);
       }}
-      .rail-item .label {{
-        font-size: {theme.font("body")};
-        opacity: 0; transition: opacity 140ms ease-out;
-      }}
-      .rail:hover .rail-item .label {{ opacity: 1; }}
+      .rail-item .label {{ font-size: {theme.font("body")}; }}
       .rail-spacer {{ flex: 1; }}
       .page-body {{ margin-left: {RAIL_WIDTH}px; }}
     </style>
@@ -95,9 +95,12 @@ def page_frame(active_path: str):
             ui.label("Tema claro" if theme.is_dark() else "Tema escuro").classes("label")
         theme_item.on("click", lambda: theme.toggle())
 
+    # The offset has to be inline: the blanket `margin:0` that used to sit here beat
+    # the stylesheet rule, so the page sat underneath the sidebar all along and the
+    # hover expansion merely made the overlap obvious.
     with ui.column().classes("page-body").style(
         f"width:calc(100% - {RAIL_WIDTH}px);align-items:center;min-height:100vh;"
-        f"background:{theme.var('bg')};padding:0;margin:0;gap:0"
+        f"background:{theme.var('bg')};padding:0;margin:0 0 0 {RAIL_WIDTH}px;gap:0"
     ):
         with ui.column().style(
             "width:100%;align-items:center;padding:22px 28px;box-sizing:border-box"
