@@ -122,6 +122,31 @@ def section_label(text: str, *, help_text: str = "") -> None:
             info_icon(help_text)
 
 
+def period_selector() -> None:
+    """Segmented control: the Dashboard stops being a one-month-at-a-time view."""
+    from app.services.money import PERIOD_LABELS
+
+    current = state.period()
+    with ui.row().style(
+        f"align-items:center;gap:0;border:0.5px solid {theme.var('border')};"
+        f"border-radius:8px;overflow:hidden"
+    ):
+        for value, label in PERIOD_LABELS.items():
+            is_active = value == current
+
+            def _pick(value=value) -> None:
+                state.set_period(value)
+                ui.navigate.reload()
+
+            btn = ui.button(label, on_click=_pick).props("flat no-caps dense square")
+            btn.style(
+                f"color:{theme.var('s1') if is_active else theme.var('text2')};"
+                f"background:{theme.var('accent') if is_active else 'transparent'};"
+                f"font-size:12px;border-radius:0;min-width:64px;"
+                f"font-weight:{'500' if is_active else '400'}"
+            )
+
+
 def month_navigator() -> None:
     with ui.row().style("align-items:center;gap:2px"):
         def _go(delta: int) -> None:

@@ -369,9 +369,16 @@ def goal_progress_figure(goal, *, height: int = 200) -> go.Figure:
     return fig
 
 
-def sankey_figure(month: str, cycle_start_day: int = 1, *, height: int = 260) -> go.Figure | None:
+def sankey_figure(
+    month: str,
+    cycle_start_day: int = 1,
+    *,
+    height: int = 260,
+    start=None,
+    end=None,
+) -> go.Figure | None:
     with get_session() as session:
-        data = planning.sankey_data(session, month, cycle_start_day)
+        data = planning.sankey_data(session, month, cycle_start_day, start=start, end=end)
     if data is None:
         return None
     t = theme.current()

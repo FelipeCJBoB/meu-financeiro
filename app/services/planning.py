@@ -7,7 +7,13 @@ from sqlmodel import Session, select
 from app.models import Account, Category, Goal, Transaction, TransactionSplit, TransactionType
 from app.services.budgets import budget_progress
 from app.services.goals import list_goals
-from app.services.money import month_bounds, month_key, month_key_for_date, months_between
+from app.services.money import (
+    month_bounds,
+    month_key,
+    month_key_for_date,
+    months_between,
+    previous_month,
+)
 from app.services.recurring import due_recurring_rules, list_recurring_rules
 from app.services.transactions import month_totals
 
@@ -104,9 +110,64 @@ def overall_status(session: Session, month: str, cycle_start_day: int = 1) -> di
     }
 
 
-def sankey_data(session: Session, month: str, cycle_start_day: int = 1) -> dict | None:
-    """Money-flow graph for the cycle: income -> account -> expenses/transfers/leftover."""
-    start, end = month_bounds(month, cycle_start_day)
+def emergency_fund_months(session: Session, month: str, cycle_start_day: int = 1) -> dict | None:
+    """How many months of expenses your reachable money covers.
+
+    Uses liquid assets only, not total net worth: an apartment or a locked-in
+    investment does not pay next month's groceries, so counting it here would
+    overstate the cushion badly.
+    """
+    from app.services.networth import balance_sheet
+    from app.services.transactions import monthly_series
+
+    sheet = balance_sheet(session)
+    rows = monthly_series(
+        session, end_month=previous_month(month), months=6, cycle_start_day=cycle_start_day
+    )
+    spending = [r["expense_cents"] for r in rows if r["expense_cents"] > 0]
+    if not spending:
+        return None
+    average_expense = sum(spending) / len(spending)
+    if average_expense <= 0:
+        return None
+    return {
+        "months_covered": sheet["liquid_cents"] / average_expense,
+        "liquid_cents": sheet["liquid_cents"],
+        "average_expense_cents": round(average_expense),
+    }
+
+
+def savings_rate(session: Session, start: date, end: date) -> float | None:
+    """Share of income that did not get spent, for the selected period."""
+    from app.services.transactions import range_totals
+
+    totals = range_totals(session, start, end)
+    if totals["income_cents"] <= 0:
+        return None
+    return (totals["income_cents"] - totals["expense_cents"]) / totals["income_cents"]
+
+
+def worst_budget_category(session: Session, month: str, cycle_start_day: int = 1) -> dict | None:
+    rows = budget_progress(session, month, cycle_start_day)
+    if not rows:
+        return None
+    worst = rows[0]
+    if worst["pct"] < 0.8:
+        return None
+    return worst
+
+
+def sankey_data(
+    session: Session,
+    month: str,
+    cycle_start_day: int = 1,
+    *,
+    start: date | None = None,
+    end: date | None = None,
+) -> dict | None:
+    """Money-flow graph: income -> account -> expenses/transfers/leftover."""
+    if start is None or end is None:
+        start, end = month_bounds(month, cycle_start_day)
     txs = session.exec(
         select(Transaction).where(Transaction.date >= start, Transaction.date <= end)
     ).all()

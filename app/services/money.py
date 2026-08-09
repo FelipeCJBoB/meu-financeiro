@@ -61,6 +61,20 @@ def previous_month(month: str) -> str:
     return month_key(add_months(date(year, month_num, 1), -1))
 
 
+PERIOD_MONTHS = {"month": 1, "3m": 3, "12m": 12, "all": 120}
+PERIOD_LABELS = {"month": "Mês", "3m": "3 meses", "12m": "12 meses", "all": "Tudo"}
+
+
+def period_bounds(period: str, month: str, cycle_start_day: int = 1) -> tuple[date, date]:
+    """Date range covered by a period selection, anchored on the cycle being viewed."""
+    months = PERIOD_MONTHS.get(period, 1)
+    _, end = month_bounds(month, cycle_start_day)
+    year, month_num = (int(part) for part in month.split("-"))
+    first_month = add_months(date(year, month_num, 1), -(months - 1))
+    start, _ = month_bounds(month_key(first_month), cycle_start_day)
+    return start, end
+
+
 def months_between(month_a: str, month_b: str) -> int:
     year_a, num_a = (int(part) for part in month_a.split("-"))
     year_b, num_b = (int(part) for part in month_b.split("-"))

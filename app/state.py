@@ -4,7 +4,15 @@ from datetime import date
 
 from app.services.money import add_months, month_key, month_key_for_date
 
-_state: dict = {"month": None, "cycle_start_day": None}
+_state: dict = {"month": None, "cycle_start_day": None, "period": "month"}
+
+
+def period() -> str:
+    return _state["period"]
+
+
+def set_period(value: str) -> None:
+    _state["period"] = value
 
 
 def _ensure_loaded() -> None:
