@@ -137,11 +137,13 @@ def emergency_fund_months(session: Session, month: str, cycle_start_day: int = 1
     }
 
 
-def savings_rate(session: Session, start: date, end: date) -> float | None:
+def savings_rate(
+    session: Session, start: date, end: date, *, account_id: int | None = None
+) -> float | None:
     """Share of income that did not get spent, for the selected period."""
     from app.services.transactions import range_totals
 
-    totals = range_totals(session, start, end)
+    totals = range_totals(session, start, end, account_id=account_id)
     if totals["income_cents"] <= 0:
         return None
     return (totals["income_cents"] - totals["expense_cents"]) / totals["income_cents"]
@@ -164,13 +166,15 @@ def sankey_data(
     *,
     start: date | None = None,
     end: date | None = None,
+    account_id: int | None = None,
 ) -> dict | None:
     """Money-flow graph: income -> account -> expenses/transfers/leftover."""
     if start is None or end is None:
         start, end = month_bounds(month, cycle_start_day)
-    txs = session.exec(
-        select(Transaction).where(Transaction.date >= start, Transaction.date <= end)
-    ).all()
+    stmt = select(Transaction).where(Transaction.date >= start, Transaction.date <= end)
+    if account_id is not None:
+        stmt = stmt.where(Transaction.account_id == account_id)
+    txs = session.exec(stmt).all()
     if not txs:
         return None
 

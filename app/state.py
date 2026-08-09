@@ -4,7 +4,12 @@ from datetime import date
 
 from app.services.money import add_months, month_key, month_key_for_date
 
-_state: dict = {"month": None, "cycle_start_day": None, "period": "month"}
+_state: dict = {
+    "month": None,
+    "cycle_start_day": None,
+    "period": "month",
+    "account_id": None,
+}
 
 
 def period() -> str:
@@ -13,6 +18,15 @@ def period() -> str:
 
 def set_period(value: str) -> None:
     _state["period"] = value
+
+
+def account_id() -> int | None:
+    """None means 'all accounts combined'."""
+    return _state["account_id"]
+
+
+def set_account_id(value: int | None) -> None:
+    _state["account_id"] = value
 
 
 def _ensure_loaded() -> None:

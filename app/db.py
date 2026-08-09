@@ -47,6 +47,7 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("settings", "window_width", "INTEGER DEFAULT 2560"),
     ("settings", "window_height", "INTEGER DEFAULT 1440"),
     ("goals", "status", "TEXT DEFAULT 'active'"),
+    ("settings", "theme_name", "TEXT DEFAULT 'linen'"),
 ]
 
 

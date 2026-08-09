@@ -6,7 +6,7 @@ from nicegui import native, ui
 
 from app import state
 from app.db import init_db
-from app.ui import dashboard, lancamentos, metas, orcamento, patrimonio
+from app.ui import dashboard, lancamentos, metas, orcamento, patrimonio, perfil
 
 
 @ui.page("/")
@@ -32,6 +32,11 @@ def metas_page() -> None:
 @ui.page("/patrimonio")
 def patrimonio_page() -> None:
     patrimonio.render()
+
+
+@ui.page("/perfil")
+def perfil_page() -> None:
+    perfil.render()
 
 
 def main() -> None:

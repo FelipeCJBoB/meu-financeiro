@@ -45,7 +45,7 @@ def _adjust_balance_dialog(account, on_saved) -> ui.dialog:
             f"font-size:15px;font-weight:500;color:{theme.var('text')}"
         )
         ui.label(f"Saldo atual calculado: {format_brl(current)}").style(
-            f"font-size:12px;color:{theme.var('textm')};margin-bottom:8px"
+            f"font-size:14px;color:{theme.var('textm')};margin-bottom:8px"
         )
         new_value_input = ui.number("Novo saldo (R$)", value=current / 100, format="%.2f").props(
             "outlined dense"
@@ -79,12 +79,12 @@ def _account_row(row) -> None:
             ACCOUNT_TYPE_ICON.get(account.type, "folder"), theme.current()["accent"]
         )
         with ui.column().style("flex:1;gap:0"):
-            ui.label(account.name).style(f"font-size:13px;color:{theme.var('text')}")
+            ui.label(account.name).style(f"font-size:15px;color:{theme.var('text')}")
             ui.label(ACCOUNT_TYPE_LABELS.get(account.type, "")).style(
-                f"font-size:11px;color:{theme.var('textm')}"
+                f"font-size:15px;color:{theme.var('textm')}"
             )
         ui.label(format_brl(row["balance_cents"])).style(
-            f"font-size:13px;color:{theme.var('text')};margin-right:8px"
+            f"font-size:15px;color:{theme.var('text')};margin-right:8px"
         )
         adjust = _adjust_balance_dialog(account, lambda: ui.navigate.reload())
         ui.button(icon="tune", on_click=adjust.open).props("flat dense round").style(
@@ -106,13 +106,13 @@ def _forecast_section(horizon_days: int) -> None:
         with ui.row().style("width:100%;justify-content:space-between;align-items:center"):
             components.section_label(f"Projeção de saldo · próximos {horizon_days} dias")
             ui.label(format_brl(projected_cents)).style(
-                f"font-size:14px;font-weight:500;color:{theme.var('text')}"
+                f"font-size:16px;font-weight:500;color:{theme.var('text')}"
             )
         ui.label(
             "A linha soma suas recorrências ativas ao saldo atual - não tenta prever gastos "
             "avulsos. A faixa ao redor reflete a variação real das suas despesas nos últimos "
             "meses (mais larga quanto mais longe no tempo); não é uma garantia estatística."
-        ).style(f"font-size:11px;color:{theme.var('textm')};margin-bottom:8px")
+        ).style(f"font-size:15px;color:{theme.var('textm')};margin-bottom:8px")
         ui.plotly(forecast_figure(height=200, horizon_days=horizon_days)).style(
             "width:100%;height:200px"
         )
@@ -227,7 +227,7 @@ def render() -> None:
 
         with ui.row().style("width:100%;gap:6px;align-items:center"):
             ui.label("Periodo do grafico").style(
-                f"font-size:12px;color:{theme.var('textm')};margin-right:4px"
+                f"font-size:14px;color:{theme.var('textm')};margin-right:4px"
             )
             for months, label in {6: "6 meses", 12: "12 meses", 60: "Tudo"}.items():
                 ui.button(
@@ -237,7 +237,7 @@ def render() -> None:
 
         with ui.row().style("width:100%;gap:6px;align-items:center"):
             ui.label("Horizonte da projecao").style(
-                f"font-size:12px;color:{theme.var('textm')};margin-right:4px"
+                f"font-size:14px;color:{theme.var('textm')};margin-right:4px"
             )
             for days, label in HORIZON_LABELS.items():
                 ui.button(

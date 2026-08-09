@@ -60,6 +60,12 @@ def info_icon(text: str, *, size: str = "13px") -> None:
     icon.tooltip(text)
 
 
+def money_color(cents: int) -> str:
+    """Neon-forward semantic colour. Always paired with a +/- sign in the text so
+    the meaning never rests on colour alone."""
+    return theme.var("pos") if cents >= 0 else theme.var("neg")
+
+
 def kpi_card(
     label: str,
     value: str,
@@ -69,20 +75,31 @@ def kpi_card(
     delta_text: str = "",
     delta_color: str | None = None,
     help_text: str = "",
+    glow: str | None = None,
 ) -> None:
     with card():
-        with ui.row().style("align-items:center;gap:0;margin-bottom:4px"):
-            ui.label(label).style(f"font-size:13px;color:{theme.var('text2')}")
+        with ui.row().style("align-items:center;gap:0;margin-bottom:6px"):
+            ui.label(label).style(
+                f"font-size:{theme.font('small')};color:{theme.var('text2')}"
+            )
             if help_text:
                 info_icon(help_text)
-        ui.label(value).style(
-            f"font-size:22px;font-weight:500;color:{value_color or theme.var('text')}"
+        value_label = ui.label(value).classes("money")
+        value_style = (
+            f"font-size:{theme.font('kpi')};font-weight:600;line-height:1.15;"
+            f"color:{value_color or theme.var('text')}"
         )
+        if glow:
+            value_style += f";text-shadow:{glow}"
+        value_label.style(value_style)
         if sub:
-            ui.label(sub).style(f"font-size:12px;color:{theme.var('textm')};margin-top:4px")
+            ui.label(sub).style(
+                f"font-size:{theme.font('meta')};color:{theme.var('textm')};margin-top:6px"
+            )
         if delta_text:
             ui.label(delta_text).style(
-                f"font-size:12px;color:{delta_color or theme.var('textm')};margin-top:2px"
+                f"font-size:{theme.font('meta')};"
+                f"color:{delta_color or theme.var('textm')};margin-top:3px"
             )
 
 
@@ -117,9 +134,30 @@ def category_chip(icon: str, color: str, *, size: str = "28px") -> ui.element:
 
 def section_label(text: str, *, help_text: str = "") -> None:
     with ui.row().style("align-items:center;gap:0;margin:4px 0 4px"):
-        ui.label(text).style(f"font-size:13px;color:{theme.var('text2')}")
+        ui.label(text).style(f"font-size:15px;color:{theme.var('text2')}")
         if help_text:
             info_icon(help_text)
+
+
+def account_filter_selector() -> None:
+    """Switches between the combined view and a single account."""
+    with get_session() as session:
+        options = {0: "Todas as contas"}
+        for account in accounts_service.list_accounts(session):
+            options[account.id] = account.name
+
+    current = state.account_id() or 0
+
+    def _pick(event) -> None:
+        state.set_account_id(event.value or None)
+        ui.navigate.reload()
+
+    select = ui.select(options, value=current, on_change=_pick).props("outlined dense")
+    select.style("min-width:170px")
+    select.tooltip(
+        "Ver os numeros de uma conta so, ou de todas somadas. Indicadores que nao se "
+        "dividem por conta (orcamento, metas, reserva) so aparecem na visao combinada."
+    )
 
 
 def period_selector() -> None:
@@ -142,7 +180,7 @@ def period_selector() -> None:
             btn.style(
                 f"color:{theme.var('s1') if is_active else theme.var('text2')};"
                 f"background:{theme.var('accent') if is_active else 'transparent'};"
-                f"font-size:12px;border-radius:0;min-width:64px;"
+                f"font-size:14px;border-radius:0;min-width:64px;"
                 f"font-weight:{'500' if is_active else '400'}"
             )
 
@@ -158,7 +196,7 @@ def month_navigator() -> None:
         ).style(f"color:{theme.var('text2')}")
 
         ui.label(format_month_label(state.current_month())).style(
-            f"font-size:14px;font-weight:500;color:{theme.var('text')};min-width:130px;"
+            f"font-size:16px;font-weight:500;color:{theme.var('text')};min-width:130px;"
             f"text-align:center"
         )
 
@@ -172,7 +210,7 @@ def month_navigator() -> None:
                 ui.navigate.reload()
 
             ui.button("Hoje", on_click=_today).props("flat dense no-caps").style(
-                f"color:{theme.var('accent2')};font-size:12px"
+                f"color:{theme.var('accent2')};font-size:14px"
             )
 
 
@@ -215,7 +253,9 @@ def new_account_dialog(on_created: Callable[[], None]) -> ui.dialog:
 
 def manage_account_dialog(account, on_saved: Callable[[], None]) -> ui.dialog:
     with get_session() as session:
-        tx_count = accounts_service.transaction_count(session, account.id)
+        refs = accounts_service.account_references(session, account.id)
+        tx_count = len(refs["transactions"])
+        rule_count = len(refs["recurring_rules"])
 
     with ui.dialog() as dialog, card(padding="1.25rem"):
         ui.label(f"Gerenciar conta · {account.name}").style(
@@ -243,20 +283,25 @@ def manage_account_dialog(account, on_saved: Callable[[], None]) -> ui.dialog:
             dialog.close()
             on_saved()
 
-        ui.label(
-            f"{tx_count} lancamento(s) vinculado(s) a esta conta."
-            if tx_count
-            else "Nenhum lancamento vinculado."
-        ).style(f"font-size:12px;color:{theme.var('textm')};margin-top:12px")
+        vinculos = []
+        if tx_count:
+            vinculos.append(f"{tx_count} lancamento(s)")
+        if rule_count:
+            vinculos.append(f"{rule_count} recorrencia(s)")
+        vinculo_text = " e ".join(vinculos) if vinculos else "nada"
+
+        ui.label(f"Vinculado a esta conta: {vinculo_text}.").style(
+            f"font-size:14px;color:{theme.var('textm')};margin-top:12px"
+        )
 
         ui.label(
             "Arquivar esconde a conta das telas, mas mantem o historico intacto. "
-            "Excluir remove a conta e todos os lancamentos dela, sem volta."
-        ).style(f"font-size:11px;color:{theme.var('textm')};margin-top:4px")
+            "Excluir remove a conta e tudo que esta vinculado a ela, sem volta."
+        ).style(f"font-size:15px;color:{theme.var('textm')};margin-top:4px")
 
         confirm_delete = ui.checkbox(
-            f"Confirmo excluir a conta e seus {tx_count} lancamento(s)"
-            if tx_count
+            f"Confirmo excluir a conta e {vinculo_text}"
+            if vinculos
             else "Confirmo excluir esta conta"
         ).style("margin-top:8px")
 
@@ -270,8 +315,12 @@ def manage_account_dialog(account, on_saved: Callable[[], None]) -> ui.dialog:
             if not confirm_delete.value:
                 ui.notify("Marque a confirmacao antes de excluir", color="negative")
                 return
-            with get_session() as session2:
-                accounts_service.delete_account(session2, account.id, cascade=True)
+            try:
+                with get_session() as session2:
+                    accounts_service.delete_account(session2, account.id, cascade=True)
+            except Exception as exc:  # surface the failure instead of dying silently
+                ui.notify(f"Nao foi possivel excluir: {exc}", color="negative", multi_line=True)
+                return
             dialog.close()
             on_saved()
 
@@ -309,18 +358,32 @@ def settings_dialog() -> ui.dialog:
         ui.label(
             "Dia do mes em que seu ciclo financeiro comeca (ex: dia do salario). "
             "Use 1 para seguir o mes calendario normal."
-        ).style(f"font-size:12px;color:{theme.var('textm')};margin:6px 0 10px")
+        ).style(f"font-size:14px;color:{theme.var('textm')};margin:6px 0 10px")
 
         day_input = ui.number(
             "Dia de inicio do ciclo", value=state.cycle_start_day(), min=1, max=31, format="%.0f"
         ).props("outlined dense").style("width:100%")
 
+        ui.label("Contas").style(
+            f"font-size:15px;color:{theme.var('text')};margin-top:16px"
+        )
+        ui.label(
+            "Suas contas ficam na tela Patrimonio, onde voce cria, renomeia, arquiva ou "
+            "exclui cada uma e ve o saldo de todas."
+        ).style(f"font-size:14px;color:{theme.var('textm')};margin-bottom:6px")
+        ui.button(
+            "Abrir Patrimonio", icon="trending_up",
+            on_click=lambda: (dialog.close(), ui.navigate.to("/patrimonio")),
+        ).props("flat no-caps dense").style(
+            f"color:{theme.var('accent2')};align-self:flex-start"
+        )
+
         ui.label("Tamanho da janela").style(
-            f"font-size:13px;color:{theme.var('text')};margin-top:16px"
+            f"font-size:15px;color:{theme.var('text')};margin-top:16px"
         )
         ui.label(
             "Aplica na hora e vira o tamanho padrao na proxima vez que voce abrir o app."
-        ).style(f"font-size:12px;color:{theme.var('textm')};margin-bottom:8px")
+        ).style(f"font-size:14px;color:{theme.var('textm')};margin-bottom:8px")
 
         with ui.row().style("gap:8px;width:100%"):
             for label, width, height in WINDOW_PRESETS:
@@ -360,7 +423,7 @@ def confirm_recurring_dialog(rule, on_saved: Callable[[], None]) -> ui.dialog:
         ui.label(
             f"Venceu em {rule.next_due_date.strftime('%d/%m/%Y')}. Ajuste o valor se essa "
             f"conta veio diferente do cadastrado."
-        ).style(f"font-size:12px;color:{theme.var('textm')};margin:6px 0 10px")
+        ).style(f"font-size:14px;color:{theme.var('textm')};margin:6px 0 10px")
 
         amount_input = ui.number(
             "Valor (R$)", value=rule.amount_cents / 100, format="%.2f"
@@ -392,4 +455,4 @@ def empty_state(text: str, *, icon: str = "inbox") -> None:
         f"color:{theme.var('textm')};gap:8px"
     ):
         ui.icon(icon).style("font-size:28px")
-        ui.label(text).style("font-size:13px")
+        ui.label(text).style("font-size:15px")

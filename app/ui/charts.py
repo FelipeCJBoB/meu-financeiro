@@ -67,8 +67,8 @@ def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
             zerolinecolor=t["border"],
         ),
         showlegend=show_legend,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10, color=t["text2"])),
-        font=dict(size=11),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
     )
     return fig
 
@@ -114,8 +114,8 @@ def monthly_comparison_figure(
         xaxis=dict(showgrid=False, color=t["textm"], type="category"),
         yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10, color=t["text2"])),
-        font=dict(size=11),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
     )
     return fig
 
@@ -194,7 +194,158 @@ def forecast_figure(*, height: int = 200, horizon_days: int = 90) -> go.Figure:
         ),
         yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
         showlegend=False,
-        font=dict(size=11),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
+    )
+    return fig
+
+
+def cashflow_trend_figure(
+    end_month: str, cycle_start_day: int = 1, *, height: int = 200, months: int = 12
+) -> go.Figure:
+    """Net result per cycle: the single line that says whether months end up or down."""
+    with get_session() as session:
+        rows = transactions_service.monthly_series(
+            session, end_month=end_month, months=months, cycle_start_day=cycle_start_day
+        )
+    t = theme.current()
+    x = [r["month"] for r in rows]
+    net = [(r["income_cents"] - r["expense_cents"]) / 100 for r in rows]
+    colors = [t["pos"] if v >= 0 else t["neg"] for v in net]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=x,
+            y=net,
+            marker=dict(color=colors),
+            hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.add_hline(y=0, line_width=1, line_color=t["border"])
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=6, b=0),
+        height=height,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
+        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
+        showlegend=False,
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
+    )
+    return fig
+
+
+def category_trend_figure(
+    end_month: str, cycle_start_day: int = 1, *, height: int = 220, months: int = 6, top: int = 6
+) -> go.Figure | None:
+    """Stacked spending by category over time - shows which category is drifting."""
+    from app.models import Category, CategoryKind
+    from app.services.money import previous_month
+    from sqlmodel import select
+
+    labels = [end_month]
+    for _ in range(months - 1):
+        labels.append(previous_month(labels[-1]))
+    labels.reverse()
+
+    with get_session() as session:
+        categories = [
+            c
+            for c in session.exec(select(Category)).all()
+            if c.kind != CategoryKind.income and not c.archived
+        ]
+        series = []
+        for category in categories:
+            values = [
+                budgets_service.spent_in_category(session, category.id, m, cycle_start_day)
+                for m in labels
+            ]
+            if sum(values) > 0:
+                series.append(
+                    {"name": category.name, "color": category.color, "values": values}
+                )
+
+    if not series:
+        return None
+
+    ranked = sorted(series, key=lambda row: sum(row["values"]), reverse=True)[:top]
+    t = theme.current()
+
+    fig = go.Figure()
+    for row in ranked:
+        fig.add_trace(
+            go.Bar(
+                x=labels,
+                y=[v / 100 for v in row["values"]],
+                name=row["name"],
+                marker=dict(color=row["color"]),
+                hovertemplate=f"{row['name']}: R$ %{{y:,.2f}}<extra></extra>",
+            )
+        )
+    fig.update_layout(
+        barmode="stack",
+        margin=dict(l=0, r=0, t=30, b=0),
+        height=height,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
+        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, x=0,
+            font=dict(size=theme.FONT["chart_legend"], color=t["text2"]),
+        ),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
+    )
+    return fig
+
+
+def savings_rate_trend_figure(
+    end_month: str, cycle_start_day: int = 1, *, height: int = 200, months: int = 12
+) -> go.Figure:
+    """Savings rate per cycle - the discipline curve."""
+    with get_session() as session:
+        rows = transactions_service.monthly_series(
+            session, end_month=end_month, months=months, cycle_start_day=cycle_start_day
+        )
+    t = theme.current()
+    x, y = [], []
+    for row in rows:
+        if row["income_cents"] > 0:
+            x.append(row["month"])
+            y.append(
+                (row["income_cents"] - row["expense_cents"]) / row["income_cents"] * 100
+            )
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=y,
+            mode="lines+markers",
+            line=dict(color=t["accent2"], width=2),
+            marker=dict(size=6, color=t["accent2"]),
+            fill="tozeroy",
+            fillcolor=theme.rgba(t["accent2"], 0.12),
+            hovertemplate="%{x}: %{y:.0f}%<extra></extra>",
+        )
+    )
+    fig.add_hline(
+        y=20, line_width=1, line_dash="dash", line_color=t["textm"],
+        annotation_text="referencia 20%",
+        annotation_font=dict(size=theme.FONT["chart"], color=t["textm"]),
+    )
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=6, b=0),
+        height=height,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
+        yaxis=dict(
+            showgrid=True, gridcolor=t["border"], color=t["textm"],
+            zeroline=True, zerolinecolor=t["border"], ticksuffix="%",
+        ),
+        showlegend=False,
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
     )
     return fig
 
@@ -243,8 +394,8 @@ def budget_comparison_figure(month: str, cycle_start_day: int = 1) -> go.Figure:
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
         yaxis=dict(showgrid=False, color=t["text"]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=11, color=t["text2"])),
-        font=dict(size=11),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
     )
     return fig
 
@@ -268,7 +419,7 @@ def composition_donut_figure(*, height: int = 220) -> go.Figure:
             hole=0.6,
             marker=dict(colors=colors, line=dict(color=t["s1"], width=2)),
             textinfo="percent",
-            textfont=dict(color="#ffffff", size=11),
+            textfont=dict(color="#ffffff", size=theme.FONT["chart"]),
             hovertemplate="%{label}: R$ %{value:,.2f} (%{percent})<extra></extra>",
         )
     )
@@ -277,8 +428,8 @@ def composition_donut_figure(*, height: int = 220) -> go.Figure:
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
         showlegend=True,
-        legend=dict(orientation="v", font=dict(size=11, color=t["text2"])),
-        font=dict(size=11),
+        legend=dict(orientation="v", font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
     )
     return fig
 
@@ -320,8 +471,8 @@ def budget_history_figure(
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(showgrid=False, color=t["textm"], type="category"),
         yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10, color=t["text2"])),
-        font=dict(size=11),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
     )
     return fig
 
@@ -363,8 +514,8 @@ def goal_progress_figure(goal, *, height: int = 200) -> go.Figure:
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(showgrid=False, color=t["textm"], type="date"),
         yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10, color=t["text2"])),
-        font=dict(size=11),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
     )
     return fig
 
@@ -376,9 +527,12 @@ def sankey_figure(
     height: int = 260,
     start=None,
     end=None,
+    account_id=None,
 ) -> go.Figure | None:
     with get_session() as session:
-        data = planning.sankey_data(session, month, cycle_start_day, start=start, end=end)
+        data = planning.sankey_data(
+            session, month, cycle_start_day, start=start, end=end, account_id=account_id
+        )
     if data is None:
         return None
     t = theme.current()
@@ -404,13 +558,13 @@ def sankey_figure(
                 color=link_colors,
                 hovertemplate="%{source.label} -> %{target.label}: R$ %{value:,.2f}<extra></extra>",
             ),
-            textfont=dict(color=t["text"], size=12),
+            textfont=dict(color=t["text"], size=theme.FONT["chart"]+1),
         )
     )
     fig.update_layout(
         margin=dict(l=4, r=4, t=8, b=8),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(size=11),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
     )
     return fig

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlmodel import Session, select
 
-from app.models import Account, AccountType, Transaction, TransactionType
+from app.models import Account, AccountType, Goal, RecurringRule, Transaction, TransactionType
 
 
 def list_accounts(session: Session, *, include_archived: bool = False) -> list[Account]:
@@ -95,29 +95,59 @@ def transaction_count(session: Session, account_id: int) -> int:
     return len(own) + len(incoming)
 
 
+def account_references(session: Session, account_id: int) -> dict:
+    """Everything that points at this account. Foreign keys are enforced, so any
+    of these left behind makes the delete fail at the database level."""
+    own = session.exec(select(Transaction).where(Transaction.account_id == account_id)).all()
+    incoming = session.exec(
+        select(Transaction).where(Transaction.transfer_account_id == account_id)
+    ).all()
+    rules = session.exec(
+        select(RecurringRule).where(RecurringRule.account_id == account_id)
+    ).all()
+    goals = session.exec(select(Goal).where(Goal.linked_account_id == account_id)).all()
+    return {
+        "transactions": {tx.id: tx for tx in list(own) + list(incoming)},
+        "recurring_rules": list(rules),
+        "goals": list(goals),
+    }
+
+
 def delete_account(session: Session, account_id: int, *, cascade: bool = False) -> None:
     """Removes an account. Refuses to silently orphan history: without cascade,
-    an account that still has transactions raises instead of deleting."""
+    an account that is still referenced raises instead of deleting."""
     from app.services.transactions import delete_transaction
 
     account = session.get(Account, account_id)
     if account is None:
         return
 
-    related = session.exec(select(Transaction).where(Transaction.account_id == account_id)).all()
-    incoming = session.exec(
-        select(Transaction).where(Transaction.transfer_account_id == account_id)
-    ).all()
-    all_related = {tx.id: tx for tx in list(related) + list(incoming)}
+    refs = account_references(session, account_id)
+    total_refs = (
+        len(refs["transactions"]) + len(refs["recurring_rules"]) + len(refs["goals"])
+    )
 
-    if all_related and not cascade:
+    if total_refs and not cascade:
         raise ValueError(
-            f"A conta tem {len(all_related)} lancamentos. Arquive a conta ou confirme a "
-            f"exclusao junto com o historico."
+            f"A conta tem {len(refs['transactions'])} lancamento(s) e "
+            f"{len(refs['recurring_rules'])} recorrencia(s). Arquive a conta ou confirme "
+            f"a exclusao junto com esse historico."
         )
 
-    for tx_id in all_related:
+    for tx_id in refs["transactions"]:
         delete_transaction(session, tx_id)
+
+    for rule in refs["recurring_rules"]:
+        session.delete(rule)
+
+    for goal in refs["goals"]:
+        goal.linked_account_id = None
+        session.add(goal)
+
+    # Commit the dependents first: without declared relationships SQLAlchemy has no
+    # dependency graph and may emit the account DELETE before these, tripping the
+    # foreign key constraint.
+    session.commit()
 
     session.delete(account)
     session.commit()

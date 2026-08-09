@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from nicegui import ui
 
 from app import theme
-from app.ui import components
 
 NAV_ITEMS = [
     ("/", "dashboard", "Dashboard"),
@@ -13,57 +12,97 @@ NAV_ITEMS = [
     ("/orcamento", "pie_chart", "Orçamento"),
     ("/metas", "flag", "Metas"),
     ("/patrimonio", "trending_up", "Patrimônio"),
+    ("/perfil", "person", "Perfil"),
 ]
+
+RAIL_WIDTH = 64
+RAIL_EXPANDED = 216
+
+
+def _sidebar_css() -> None:
+    """Collapsed rail that widens on hover - the adaptive-navigation pattern for
+    wide screens, which keeps horizontal space for content instead of a top bar."""
+    ui.add_head_html(f"""
+    <style>
+      .rail {{
+        position: fixed; top: 0; left: 0; bottom: 0;
+        width: {RAIL_WIDTH}px;
+        background: var(--app-s1);
+        border-right: 1px solid var(--app-border);
+        display: flex; flex-direction: column;
+        padding: 14px 0; gap: 4px;
+        overflow: hidden; white-space: nowrap;
+        transition: width 180ms ease-out;
+        z-index: 1000;
+      }}
+      .rail:hover {{ width: {RAIL_EXPANDED}px; box-shadow: 4px 0 24px rgba(0,0,0,0.18); }}
+      .rail-item {{
+        display: flex; align-items: center; gap: 14px;
+        height: 46px; min-height: 46px;
+        padding: 0 {(RAIL_WIDTH - 24) // 2}px;
+        color: var(--app-text2); cursor: pointer;
+        border-left: 3px solid transparent;
+        transition: background 140ms ease-out, color 140ms ease-out;
+      }}
+      .rail-item:hover {{ background: var(--app-s2); color: var(--app-text); }}
+      .rail-item.active {{
+        color: var(--app-text);
+        background: var(--app-s2);
+        border-left-color: var(--app-accent);
+      }}
+      .rail-item .label {{
+        font-size: {theme.font("body")};
+        opacity: 0; transition: opacity 140ms ease-out;
+      }}
+      .rail:hover .rail-item .label {{ opacity: 1; }}
+      .rail-spacer {{ flex: 1; }}
+      .page-body {{ margin-left: {RAIL_WIDTH}px; }}
+    </style>
+    """)
 
 
 @contextmanager
 def page_frame(active_path: str):
     theme.inject_head()
+    _sidebar_css()
 
-    with ui.column().style(
-        f"width:100%;align-items:center;min-height:100vh;background:{theme.var('bg')};"
-        f"padding:0;margin:0;gap:0"
+    with ui.element("div").classes("rail"):
+        with ui.element("div").classes("rail-item").style("cursor:default"):
+            ui.icon("account_balance_wallet").style(
+                f"color:{theme.var('accent')};font-size:24px;min-width:24px"
+            )
+            ui.label("Meu financeiro").classes("label").style(
+                f"color:{theme.var('text')};font-weight:600"
+            )
+
+        ui.element("div").style(
+            f"height:1px;background:{theme.var('border')};margin:10px 12px"
+        )
+
+        for path, icon, label in NAV_ITEMS:
+            classes = "rail-item active" if path == active_path else "rail-item"
+            item = ui.element("div").classes(classes)
+            with item:
+                ui.icon(icon).style("font-size:22px;min-width:24px")
+                ui.label(label).classes("label")
+            item.on("click", lambda p=path: ui.navigate.to(p))
+
+        ui.element("div").classes("rail-spacer")
+
+        theme_item = ui.element("div").classes("rail-item")
+        with theme_item:
+            ui.icon(theme.current()["icon"]).style("font-size:22px;min-width:24px")
+            ui.label("Tema claro" if theme.is_dark() else "Tema escuro").classes("label")
+        theme_item.on("click", lambda: theme.toggle())
+
+    with ui.column().classes("page-body").style(
+        f"width:calc(100% - {RAIL_WIDTH}px);align-items:center;min-height:100vh;"
+        f"background:{theme.var('bg')};padding:0;margin:0;gap:0"
     ):
-        with ui.row().style(
-            f"width:100%;max-width:1800px;align-items:center;justify-content:space-between;"
-            f"padding:14px 24px;border-bottom:0.5px solid {theme.var('border')};"
-            f"box-sizing:border-box;flex-wrap:wrap;gap:8px"
-        ):
-            with ui.row().style("align-items:center;gap:8px"):
-                ui.icon("account_balance_wallet").style(
-                    f"color:{theme.var('accent')};font-size:20px"
-                )
-                ui.label("Meu financeiro").style(
-                    f"color:{theme.var('text')};font-weight:500;font-size:16px"
-                )
-
-            with ui.row().style("align-items:center;gap:4px;flex-wrap:wrap"):
-                for path, icon, label in NAV_ITEMS:
-                    is_active = path == active_path
-                    btn = ui.button(
-                        label, icon=icon, on_click=lambda p=path: ui.navigate.to(p)
-                    ).props("flat no-caps dense")
-                    bg = theme.var("s1") if is_active else "transparent"
-                    fg = theme.var("text") if is_active else theme.var("text2")
-                    btn.style(
-                        f"color:{fg};background:{bg};border-radius:8px;font-size:13px;"
-                        f"font-weight:{'500' if is_active else '400'}"
-                    )
-
-            with ui.row().style("align-items:center;gap:10px"):
-                settings = components.settings_dialog()
-                gear_el = ui.icon("settings").style(
-                    f"cursor:pointer;color:{theme.var('text2')};font-size:20px"
-                )
-                gear_el.on("click", settings.open)
-
-                icon_el = ui.icon(theme.current()["icon"]).style(
-                    f"cursor:pointer;color:{theme.var('text2')};font-size:20px"
-                )
-                icon_el.on("click", lambda: theme.toggle(icon_el))
-
         with ui.column().style(
-            "width:100%;align-items:center;padding:20px 24px;box-sizing:border-box"
+            "width:100%;align-items:center;padding:22px 28px;box-sizing:border-box"
         ):
-            with ui.column().style("width:100%;max-width:1800px;gap:16px") as content:
+            # 2400px lets a 2560px-wide (2K) monitor actually fill the viewport
+            # instead of leaving a wide empty gutter on each side.
+            with ui.column().style("width:100%;max-width:2400px;gap:18px") as content:
                 yield content

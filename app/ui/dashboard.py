@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+
 from nicegui import ui
 
 from app import state, theme
@@ -14,7 +16,14 @@ from app.services.money import (
     previous_month,
 )
 from app.ui import components
-from app.ui.charts import monthly_comparison_figure, net_worth_figure, sankey_figure
+from app.ui.charts import (
+    cashflow_trend_figure,
+    category_trend_figure,
+    monthly_comparison_figure,
+    net_worth_figure,
+    sankey_figure,
+    savings_rate_trend_figure,
+)
 from app.ui.layout import page_frame
 
 
@@ -38,9 +47,9 @@ def _transaction_row(session, tx) -> None:
             sub = category.name if category else "Sem categoria"
 
         with ui.column().style("flex:1;gap:0"):
-            ui.label(tx.description).style(f"font-size:13px;color:{theme.var('text')}")
+            ui.label(tx.description).style(f"font-size:15px;color:{theme.var('text')}")
             ui.label(f"{tx.date.strftime('%d/%m')} · {sub}").style(
-                f"font-size:11px;color:{theme.var('textm')}"
+                f"font-size:15px;color:{theme.var('textm')}"
             )
 
         if tx.type == TransactionType.income:
@@ -53,7 +62,7 @@ def _transaction_row(session, tx) -> None:
             shown_cents = abs(tx.amount_cents)
         else:
             color, sign, shown_cents = theme.var("red"), "-", tx.amount_cents
-        ui.label(f"{sign}{format_brl(shown_cents)}").style(f"font-size:13px;color:{color}")
+        ui.label(f"{sign}{format_brl(shown_cents)}").style(f"font-size:15px;color:{color}")
 
 
 def _exception_banner(session, status: dict, on_changed) -> None:
@@ -73,12 +82,12 @@ def _exception_banner(session, status: dict, on_changed) -> None:
         with ui.row().style("align-items:center;gap:8px"):
             ui.icon(icon).style(f"color:{accent};font-size:18px")
             ui.label("Precisa da sua atencao").style(
-                f"font-size:14px;font-weight:500;color:{theme.var('text')}"
+                f"font-size:16px;font-weight:500;color:{theme.var('text')}"
             )
 
         if status["available_negative"]:
             ui.label("Disponivel para gastar esta negativo neste ciclo.").style(
-                f"font-size:13px;color:{theme.var('text2')}"
+                f"font-size:15px;color:{theme.var('text2')}"
             )
 
         for rule in status["overdue_rules"]:
@@ -88,11 +97,11 @@ def _exception_banner(session, status: dict, on_changed) -> None:
             ):
                 with ui.column().style("flex:1;gap:0"):
                     ui.label(f"Vencida: {rule.description}").style(
-                        f"font-size:13px;color:{theme.var('text')}"
+                        f"font-size:15px;color:{theme.var('text')}"
                     )
                     ui.label(
                         f"Venceu em {rule.next_due_date.strftime('%d/%m/%Y')} · {format_brl(rule.amount_cents)}"
-                    ).style(f"font-size:11px;color:{theme.var('textm')}")
+                    ).style(f"font-size:15px;color:{theme.var('textm')}")
                 confirm_dialog = components.confirm_recurring_dialog(rule, on_changed)
                 ui.button("Confirmar", on_click=confirm_dialog.open).props(
                     "dense no-caps unelevated"
@@ -107,7 +116,7 @@ def _exception_banner(session, status: dict, on_changed) -> None:
                 ui.label(
                     f"{category.name} passou do orcamento: {format_brl(row['spent_cents'])} "
                     f"de {format_brl(row['budget_cents'])}"
-                ).style(f"font-size:13px;color:{theme.var('text2')};flex:1")
+                ).style(f"font-size:15px;color:{theme.var('text2')};flex:1")
 
 
 def _upcoming_payments_section(session) -> None:
@@ -130,15 +139,15 @@ def _upcoming_payments_section(session) -> None:
                     theme.current()["accent"] if rule.type == TransactionType.income else theme.current()["textm"],
                 )
                 with ui.column().style("flex:1;gap:0"):
-                    ui.label(rule.description).style(f"font-size:13px;color:{theme.var('text')}")
+                    ui.label(rule.description).style(f"font-size:15px;color:{theme.var('text')}")
                     account_name = account.name if account else ""
                     ui.label(
                         f"em {rule.next_due_date.strftime('%d/%m')} · {account_name}"
-                    ).style(f"font-size:11px;color:{theme.var('textm')}")
+                    ).style(f"font-size:15px;color:{theme.var('textm')}")
                 color = theme.var("green") if rule.type == TransactionType.income else theme.var("text2")
                 sign = "+" if rule.type == TransactionType.income else "-"
                 ui.label(f"{sign}{format_brl(rule.amount_cents)}").style(
-                    f"font-size:13px;color:{color}"
+                    f"font-size:15px;color:{color}"
                 )
 
 
@@ -167,12 +176,24 @@ def render() -> None:
             period_label = PERIOD_LABELS[period].lower()
             period_months = PERIOD_MONTHS[period]
 
+            selected_account_id = state.account_id()
+            selected_account = (
+                session.get(Account, selected_account_id) if selected_account_id else None
+            )
+            is_combined = selected_account is None
+
             start, end = period_bounds(period, month, cycle_start_day)
-            totals = transactions.range_totals(session, start, end)
+            totals = transactions.range_totals(
+                session, start, end, account_id=selected_account_id
+            )
             cash_flow = totals["income_cents"] - totals["expense_cents"]
 
             sheet = networth.balance_sheet(session)
-            total_net_worth = sheet["net_worth_cents"]
+            total_net_worth = (
+                sheet["net_worth_cents"]
+                if is_combined
+                else accounts.account_balance_cents(session, selected_account_id)
+            )
             summary = budgets.month_summary(session, month, cycle_start_day)
             budget_pct = (
                 summary["spent_cents"] / summary["budget_cents"] if summary["budget_cents"] else 0.0
@@ -181,7 +202,9 @@ def render() -> None:
             prev_start, prev_end = period_bounds(
                 period, previous_month(month), cycle_start_day
             )
-            prev_totals = transactions.range_totals(session, prev_start, prev_end)
+            prev_totals = transactions.range_totals(
+                session, prev_start, prev_end, account_id=selected_account_id
+            )
             prev_cash_flow = prev_totals["income_cents"] - prev_totals["expense_cents"]
             cash_flow_delta = cash_flow - prev_cash_flow
             if prev_totals["income_cents"] or prev_totals["expense_cents"]:
@@ -198,28 +221,66 @@ def render() -> None:
             else:
                 delta_text, delta_color = "", None
 
-            pace = budgets.spend_pace(session, month, cycle_start_day)
-            available = planning.available_to_spend(session, month, cycle_start_day)
-            allowance = planning.daily_allowance(session, month, cycle_start_day)
+            # These only make sense across every account: a budget is by category,
+            # a goal is not tied to one account, and an emergency cushion is your
+            # total reachable money. Slicing them per account would be meaningless.
+            pace = budgets.spend_pace(session, month, cycle_start_day) if is_combined else None
+            available = (
+                planning.available_to_spend(session, month, cycle_start_day)
+                if is_combined
+                else None
+            )
+            allowance = (
+                planning.daily_allowance(session, month, cycle_start_day)
+                if is_combined
+                else None
+            )
             status = planning.overall_status(session, month, cycle_start_day)
-            emergency = planning.emergency_fund_months(session, month, cycle_start_day)
-            period_savings_rate = planning.savings_rate(session, start, end)
-            worst_category = planning.worst_budget_category(session, month, cycle_start_day)
-            trend_points = networth.trend(session, months=2)
+            emergency = (
+                planning.emergency_fund_months(session, month, cycle_start_day)
+                if is_combined
+                else None
+            )
+            period_savings_rate = planning.savings_rate(
+                session, start, end, account_id=selected_account_id
+            )
+            worst_category = (
+                planning.worst_budget_category(session, month, cycle_start_day)
+                if is_combined
+                else None
+            )
+            trend_points = networth.trend(session, months=2) if is_combined else []
 
             with ui.row().style(
                 "width:100%;justify-content:space-between;align-items:center;"
                 "flex-wrap:wrap;gap:8px"
             ):
-                components.period_selector()
+                with ui.row().style("align-items:center;gap:8px;flex-wrap:wrap"):
+                    components.period_selector()
+                    components.account_filter_selector()
                 if is_month_view:
                     components.month_navigator()
                 else:
                     ui.label(
                         f"{start.strftime('%d/%m/%Y')} até {end.strftime('%d/%m/%Y')}"
-                    ).style(f"font-size:13px;color:{theme.var('text2')}")
+                    ).style(f"font-size:15px;color:{theme.var('text2')}")
 
-            _exception_banner(session, status, lambda: ui.navigate.reload())
+            if not is_combined:
+                with ui.row().style(
+                    f"width:100%;align-items:center;gap:8px;padding:8px 12px;"
+                    f"border-radius:8px;background:{theme.rgba(theme.current()['accent2'], 0.10)}"
+                ):
+                    ui.icon("filter_alt").style(
+                        f"color:{theme.var('accent2')};font-size:16px"
+                    )
+                    ui.label(
+                        f"Vendo apenas {selected_account.name}. Orcamento, metas, reserva de "
+                        f"emergencia e dividas sao calculados sobre todas as contas juntas, "
+                        f"entao ficam ocultos aqui."
+                    ).style(f"font-size:14px;color:{theme.var('text2')}")
+
+            if is_combined:
+                _exception_banner(session, status, lambda: ui.navigate.reload())
 
             with components.kpi_grid():
                 if available:
@@ -236,7 +297,8 @@ def render() -> None:
                             f"Receita {format_brl(available['income_total_cents'])} - "
                             f"compromissos {format_brl(available['committed_cents'])}"
                         ),
-                        value_color=theme.var("green") if free >= 0 else theme.var("red"),
+                        value_color=components.money_color(free),
+                        glow=theme.current()['glow_pos' if free >= 0 else 'glow_neg'],
                         delta_text=allowance_text,
                         help_text=(
                             "Receita recebida + recorrencias de entrada ainda a vencer, menos "
@@ -258,18 +320,27 @@ def render() -> None:
                     nw_delta_text, nw_delta_color = "", None
 
                 components.kpi_card(
-                    "Patrimonio liquido",
+                    "Patrimonio liquido" if is_combined else f"Saldo · {selected_account.name}",
                     format_brl(total_net_worth),
-                    sub=f"Ativos {format_brl(sheet['assets_cents'])} - dividas {format_brl(sheet['liabilities_cents'])}",
+                    sub=(
+                        f"Ativos {format_brl(sheet['assets_cents'])} - dividas {format_brl(sheet['liabilities_cents'])}"
+                        if is_combined
+                        else components.ACCOUNT_TYPE_LABELS.get(selected_account.type.value, "")
+                    ),
                     delta_text=nw_delta_text,
                     delta_color=nw_delta_color,
-                    help_text="Tudo que voce tem menos tudo que voce deve.",
+                    help_text=(
+                        "Tudo que voce tem menos tudo que voce deve."
+                        if is_combined
+                        else "Saldo calculado desta conta: saldo inicial mais tudo que entrou e saiu dela."
+                    ),
                 )
                 components.kpi_card(
                     f"Fluxo · {period_label}",
                     format_brl(cash_flow),
                     sub=f"Receitas {format_brl(totals['income_cents'])} · Despesas {format_brl(totals['expense_cents'])}",
-                    value_color=theme.var("green") if cash_flow >= 0 else theme.var("red"),
+                    value_color=components.money_color(cash_flow),
+                    glow=theme.current()['glow_pos' if cash_flow >= 0 else 'glow_neg'],
                     delta_text=delta_text,
                     delta_color=delta_color,
                     help_text=(
@@ -294,7 +365,7 @@ def render() -> None:
                             "gastando no mesmo ritmo ate o fim do mes."
                         ),
                     )
-                else:
+                elif is_combined:
                     components.kpi_card(
                         "Orcamento do mes",
                         f"{budget_pct * 100:.0f}%" if summary["budget_cents"] else "--",
@@ -306,7 +377,13 @@ def render() -> None:
                         help_text="Percentual do total orcado nas categorias que ja foi gasto neste ciclo.",
                     )
 
-            with components.kpi_grid():
+            has_secondary_kpis = bool(
+                emergency
+                or period_savings_rate is not None
+                or (is_combined and sheet["liabilities_cents"] > 0)
+                or worst_category
+            )
+            with components.kpi_grid() if has_secondary_kpis else contextlib.nullcontext():
                 if emergency:
                     months_covered = emergency["months_covered"]
                     if months_covered >= 6:
@@ -338,7 +415,7 @@ def render() -> None:
                         ),
                         help_text="Receitas menos despesas, dividido pelas receitas do periodo.",
                     )
-                if sheet["liabilities_cents"] > 0 and sheet["assets_cents"] > 0:
+                if is_combined and sheet["liabilities_cents"] > 0 and sheet["assets_cents"] > 0:
                     ratio = sheet["liabilities_cents"] / sheet["assets_cents"]
                     components.kpi_card(
                         "Dividas sobre ativos",
@@ -371,50 +448,102 @@ def render() -> None:
 
             chart_months = max(6, period_months)
 
-            with components.panel_grid():
-                with components.card():
-                    components.section_label(
-                        "Evolucao do patrimonio",
-                        help_text="Baseado nos snapshots que voce registra manualmente na tela Patrimonio.",
-                    )
-                    ui.plotly(net_worth_figure(height=180, months=chart_months)).style(
-                        "width:100%;height:180px"
-                    )
-
-                with components.card():
-                    components.section_label(
-                        "Receitas vs. despesas por mes",
-                        help_text="Ciclos cobertos pelo periodo selecionado, ancorados no mes em exibicao.",
-                    )
-                    ui.plotly(
-                        monthly_comparison_figure(
-                            month, cycle_start_day, height=180, months=chart_months
+            if is_combined:
+                with components.panel_grid():
+                    with components.card():
+                        components.section_label(
+                            "Evolucao do patrimonio",
+                            help_text="Baseado nos snapshots que voce registra manualmente na tela Patrimonio.",
                         )
-                    ).style("width:100%;height:180px")
-
-            with components.panel_grid():
-                _upcoming_payments_section(session)
-
-                with components.card():
-                    components.section_label("Metas em andamento")
-                    goal_list = goals.list_goals(session)[:3]
-                    if not goal_list:
-                        components.empty_state("Nenhuma meta ainda", icon="flag")
-                    for goal in goal_list:
-                        pct = goals.progress_pct(goal)
-                        with ui.row().style(
-                            "width:100%;justify-content:space-between;"
-                            "font-size:13px;margin-bottom:4px"
-                        ):
-                            ui.label(goal.name).style(f"color:{theme.var('text')}")
-                            ui.label(f"{pct * 100:.0f}%").style(f"color:{theme.var('text2')}")
-                        components.progress_track(
-                            pct, theme.var("accent"),
-                            marker_pct=goals.expected_progress_pct(goal),
+                        ui.plotly(net_worth_figure(height=180, months=chart_months)).style(
+                            "width:100%;height:180px"
                         )
+
+                    with components.card():
+                        components.section_label(
+                            "Receitas vs. despesas por mes",
+                            help_text="Ciclos cobertos pelo periodo selecionado, ancorados no mes em exibicao.",
+                        )
+                        ui.plotly(
+                            monthly_comparison_figure(
+                                month, cycle_start_day, height=180, months=chart_months
+                            )
+                        ).style("width:100%;height:180px")
+
+                history_months = max(12, chart_months)
+                with components.panel_grid():
+                    with components.card():
+                        components.section_label(
+                            "Resultado de cada mes",
+                            help_text=(
+                                "Receitas menos despesas, ciclo a ciclo. Barra para cima "
+                                "sobrou dinheiro, para baixo o mes fechou no vermelho."
+                            ),
+                        )
+                        ui.plotly(
+                            cashflow_trend_figure(
+                                month, cycle_start_day, height=200, months=history_months
+                            )
+                        ).style("width:100%;height:200px")
+
+                    with components.card():
+                        components.section_label(
+                            "Taxa de poupanca ao longo do tempo",
+                            help_text=(
+                                "Quanto da receita sobrou em cada ciclo. A linha tracejada "
+                                "marca 20%, referencia comum de disciplina financeira."
+                            ),
+                        )
+                        ui.plotly(
+                            savings_rate_trend_figure(
+                                month, cycle_start_day, height=200, months=history_months
+                            )
+                        ).style("width:100%;height:200px")
+
+                category_trend = category_trend_figure(
+                    month, cycle_start_day, height=240, months=max(6, chart_months)
+                )
+                if category_trend is not None:
+                    with components.card():
+                        components.section_label(
+                            "Gastos por categoria, mes a mes",
+                            help_text=(
+                                "Barras empilhadas das categorias que mais pesam. Serve para "
+                                "achar a categoria que cresceu sem voce perceber."
+                            ),
+                        )
+                        ui.plotly(category_trend).style("width:100%;height:240px")
+
+                with components.panel_grid():
+                    _upcoming_payments_section(session)
+
+                    with components.card():
+                        components.section_label("Metas em andamento")
+                        goal_list = goals.list_goals(session)[:3]
+                        if not goal_list:
+                            components.empty_state("Nenhuma meta ainda", icon="flag")
+                        for goal in goal_list:
+                            pct = goals.progress_pct(goal)
+                            with ui.row().style(
+                                "width:100%;justify-content:space-between;"
+                                "font-size:15px;margin-bottom:4px"
+                            ):
+                                ui.label(goal.name).style(f"color:{theme.var('text')}")
+                                ui.label(f"{pct * 100:.0f}%").style(
+                                    f"color:{theme.var('text2')}"
+                                )
+                            components.progress_track(
+                                pct, theme.var("accent"),
+                                marker_pct=goals.expected_progress_pct(goal),
+                            )
 
             sankey = sankey_figure(
-                month, cycle_start_day, height=260, start=start, end=end
+                month,
+                cycle_start_day,
+                height=260,
+                start=start,
+                end=end,
+                account_id=selected_account_id,
             )
             if sankey is not None:
                 with components.card():
@@ -427,7 +556,11 @@ def render() -> None:
             with components.card():
                 components.section_label(f"Lancamentos · {period_label}")
                 recent = transactions.list_transactions(
-                    session, start=start, end=end, limit=10
+                    session,
+                    start=start,
+                    end=end,
+                    limit=10,
+                    account_id=selected_account_id,
                 )
                 if not recent:
                     components.empty_state("Nenhum lancamento no periodo", icon="receipt_long")

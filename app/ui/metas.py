@@ -166,10 +166,10 @@ def _contributions_dialog(goal, on_saved) -> ui.dialog:
             ):
                 with ui.column().style("flex:1;gap:0"):
                     ui.label(format_brl(entry["amount_cents"])).style(
-                        f"font-size:13px;color:{theme.var('green')}"
+                        f"font-size:15px;color:{theme.var('green')}"
                     )
                     ui.label(f"{entry['date']}{' · ' + entry['note'] if entry['note'] else ''}").style(
-                        f"font-size:11px;color:{theme.var('textm')}"
+                        f"font-size:15px;color:{theme.var('textm')}"
                     )
 
                 def _remove(contribution_id=entry["id"]) -> None:
@@ -209,7 +209,7 @@ def _goal_card(session, goal) -> None:
                 GoalStatus.completed: theme.var("green"),
             }[goal.status]
             ui.label(STATUS_LABELS[goal.status.value]).style(
-                f"font-size:11px;color:{badge_color}"
+                f"font-size:15px;color:{badge_color}"
             )
             edit = _goal_form_dialog(lambda: ui.navigate.reload(), editing=goal)
             ui.button(icon="edit", on_click=edit.open).props("flat dense round").style(
@@ -219,11 +219,11 @@ def _goal_card(session, goal) -> None:
         sub = f"{format_brl(goal.current_amount_cents)} de {format_brl(goal.target_amount_cents)}"
         if goal.target_date:
             sub += f" · até {goal.target_date.strftime('%m/%Y')}"
-        ui.label(sub).style(f"font-size:12px;color:{theme.var('textm')};margin:6px 0 10px")
+        ui.label(sub).style(f"font-size:14px;color:{theme.var('textm')};margin:6px 0 10px")
 
         components.progress_track(pct, theme.var("accent"), marker_pct=expected)
         ui.label(f"{pct * 100:.0f}% · faltam {format_brl(remaining)}").style(
-            f"font-size:12px;color:{theme.var('text2')};margin-top:6px"
+            f"font-size:14px;color:{theme.var('text2')};margin-top:6px"
         )
 
         if not is_done:
@@ -232,26 +232,26 @@ def _goal_card(session, goal) -> None:
                 ui.label(
                     "No ritmo ou adiantado" if ahead else "Atras do ritmo para o prazo"
                 ).style(
-                    f"font-size:11px;color:{theme.var('green') if ahead else theme.var('amber')};"
+                    f"font-size:15px;color:{theme.var('green') if ahead else theme.var('amber')};"
                     f"margin-top:2px"
                 )
             if required:
                 ui.label(f"Para o prazo: aportar {format_brl(required)}/mes").style(
-                    f"font-size:11px;color:{theme.var('text2')};margin-top:2px"
+                    f"font-size:15px;color:{theme.var('text2')};margin-top:2px"
                 )
             if months_left is not None and months_left > 0:
                 ui.label(f"No seu ritmo real: {months_left} mes(es) para concluir").style(
-                    f"font-size:11px;color:{theme.var('textm')};margin-top:2px"
+                    f"font-size:15px;color:{theme.var('textm')};margin-top:2px"
                 )
             elif months_left is None:
                 ui.label("Sem aportes suficientes para estimar o ritmo").style(
-                    f"font-size:11px;color:{theme.var('textm')};margin-top:2px"
+                    f"font-size:15px;color:{theme.var('textm')};margin-top:2px"
                 )
 
         contributions = _contributions_dialog(goal, lambda: ui.navigate.reload())
         ui.button("Aportes", icon="savings", on_click=contributions.open).props(
             "flat dense no-caps"
-        ).style(f"color:{theme.var('accent2')};font-size:12px;margin-top:8px;align-self:flex-start")
+        ).style(f"color:{theme.var('accent2')};font-size:14px;margin-top:8px;align-self:flex-start")
 
         ui.plotly(goal_progress_figure(goal, height=170)).style("width:100%;height:170px")
 

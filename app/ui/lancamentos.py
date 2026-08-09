@@ -79,7 +79,7 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
             "outlined dense type=date"
         ).style("width:100%")
         month_warning = ui.label("").style(
-            f"font-size:12px;color:{theme.var('amber')};display:none"
+            f"font-size:14px;color:{theme.var('amber')};display:none"
         )
 
         def _check_month_warning() -> None:
@@ -170,7 +170,7 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
                 ui.button("+ Adicionar divisão", on_click=_add_split_row).props(
                     "flat dense no-caps"
                 ).bind_visibility_from(split_checkbox, "value").style(
-                    f"color:{theme.var('accent2')};font-size:12px"
+                    f"color:{theme.var('accent2')};font-size:14px"
                 )
 
             new_cat_visible = {"value": False}
@@ -220,7 +220,7 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
 
             ui.button("+ Criar categoria", on_click=_toggle_new_cat).props(
                 "flat dense no-caps"
-            ).style(f"color:{theme.var('accent2')};font-size:12px;align-self:flex-start")
+            ).style(f"color:{theme.var('accent2')};font-size:14px;align-self:flex-start")
 
         amount_input = ui.number(
             "Valor total (R$)",
@@ -385,10 +385,10 @@ def _due_recurring_section(session, on_changed) -> None:
                 f"border-bottom:0.5px solid {theme.var('border')}"
             ):
                 with ui.column().style("flex:1;gap:0"):
-                    ui.label(rule.description).style(f"font-size:13px;color:{theme.var('text')}")
+                    ui.label(rule.description).style(f"font-size:15px;color:{theme.var('text')}")
                     ui.label(
                         f"Vencido em {rule.next_due_date.strftime('%d/%m/%Y')} · {format_brl(rule.amount_cents)}"
-                    ).style(f"font-size:11px;color:{theme.var('textm')}")
+                    ).style(f"font-size:15px;color:{theme.var('textm')}")
 
                 def _skip(rule_id=rule.id) -> None:
                     with get_session() as s2:
@@ -414,6 +414,7 @@ def _transaction_list(show_all: bool) -> None:
             start=None if show_all else start,
             end=None if show_all else end,
             limit=200,
+            account_id=state.account_id(),
         )
         with components.card():
             if not items:
@@ -441,7 +442,9 @@ def render() -> None:
         with ui.row().style(
             "width:100%;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"
         ):
-            components.month_navigator()
+            with ui.row().style("align-items:center;gap:8px;flex-wrap:wrap"):
+                components.month_navigator()
+                components.account_filter_selector()
             with ui.row().style("gap:8px;align-items:center"):
                 show_all = ui.checkbox(
                     "Ver todo o historico",
@@ -477,9 +480,9 @@ def _row(session, tx) -> None:
             sub = category.name if category else "Dividido em categorias"
 
         with ui.column().style("flex:1;gap:0"):
-            ui.label(tx.description).style(f"font-size:13px;color:{theme.var('text')}")
+            ui.label(tx.description).style(f"font-size:15px;color:{theme.var('text')}")
             ui.label(f"{tx.date.strftime('%d/%m/%Y')} · {sub}").style(
-                f"font-size:11px;color:{theme.var('textm')}"
+                f"font-size:15px;color:{theme.var('textm')}"
             )
 
         if tx.type == TransactionType.income:
@@ -492,7 +495,7 @@ def _row(session, tx) -> None:
             shown_cents = abs(tx.amount_cents)
         else:
             color, sign, shown_cents = theme.var("red"), "-", tx.amount_cents
-        ui.label(f"{sign}{format_brl(shown_cents)}").style(f"font-size:13px;color:{color}")
+        ui.label(f"{sign}{format_brl(shown_cents)}").style(f"font-size:15px;color:{color}")
 
         if tx.type == TransactionType.adjustment:
             ui.element("div").style("width:32px")

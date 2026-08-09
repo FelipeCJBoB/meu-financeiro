@@ -169,3 +169,4 @@ class Settings(SQLModel, table=True):
     cycle_start_day: int = 1
     window_width: int = 2560
     window_height: int = 1440
+    theme_name: str = "linen"

@@ -196,24 +196,22 @@ def month_totals(session: Session, month: str, cycle_start_day: int = 1) -> dict
     }
 
 
-def range_totals(session: Session, start: date, end: date) -> dict:
-    incomes = session.exec(
-        select(Transaction).where(
-            Transaction.type == TransactionType.income,
+def range_totals(
+    session: Session, start: date, end: date, *, account_id: int | None = None
+) -> dict:
+    def _query(tx_type: TransactionType):
+        stmt = select(Transaction).where(
+            Transaction.type == tx_type,
             Transaction.date >= start,
             Transaction.date <= end,
         )
-    ).all()
-    expenses = session.exec(
-        select(Transaction).where(
-            Transaction.type == TransactionType.expense,
-            Transaction.date >= start,
-            Transaction.date <= end,
-        )
-    ).all()
+        if account_id is not None:
+            stmt = stmt.where(Transaction.account_id == account_id)
+        return session.exec(stmt).all()
+
     return {
-        "income_cents": sum(tx.amount_cents for tx in incomes),
-        "expense_cents": sum(tx.amount_cents for tx in expenses),
+        "income_cents": sum(tx.amount_cents for tx in _query(TransactionType.income)),
+        "expense_cents": sum(tx.amount_cents for tx in _query(TransactionType.expense)),
     }
 
 

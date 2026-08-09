@@ -30,7 +30,7 @@ def _category_transactions_dialog(category: Category, month: str, cycle_start_da
             f"font-size:15px;font-weight:500;color:{theme.var('text')}"
         )
         ui.label(f"{len(rows)} lancamento(s) compoem esse gasto").style(
-            f"font-size:12px;color:{theme.var('textm')};margin:4px 0 10px"
+            f"font-size:14px;color:{theme.var('textm')};margin:4px 0 10px"
         )
         if not rows:
             components.empty_state("Nenhum lancamento nesta categoria", icon="receipt_long")
@@ -39,12 +39,12 @@ def _category_transactions_dialog(category: Category, month: str, cycle_start_da
                 f"width:100%;align-items:center;gap:10px;padding:7px 0;"
                 f"border-bottom:0.5px solid {theme.var('border')};min-width:340px"
             ):
-                ui.label(row["date"]).style(f"font-size:12px;color:{theme.var('textm')}")
+                ui.label(row["date"]).style(f"font-size:14px;color:{theme.var('textm')}")
                 ui.label(row["description"]).style(
-                    f"font-size:13px;color:{theme.var('text')};flex:1"
+                    f"font-size:15px;color:{theme.var('text')};flex:1"
                 )
                 ui.label(f"-{format_brl(row['amount_cents'])}").style(
-                    f"font-size:13px;color:{theme.var('red')}"
+                    f"font-size:15px;color:{theme.var('red')}"
                 )
         with ui.row().style("justify-content:flex-end;margin-top:12px;width:100%"):
             ui.button("Fechar", on_click=dialog.close).props("flat no-caps").style(
@@ -68,14 +68,14 @@ def _category_row(category, month: str, cycle_start_day: int) -> None:
         with ui.row().style("width:100%;align-items:center;gap:10px"):
             components.category_chip(category.icon, category.color, size="26px")
             name_label = ui.label(category.name).style(
-                f"font-size:13px;color:{theme.var('text')};flex:1;cursor:pointer"
+                f"font-size:15px;color:{theme.var('text')};flex:1;cursor:pointer"
             )
             drill = _category_transactions_dialog(category, month, cycle_start_day)
             name_label.on("click", drill.open)
             name_label.tooltip("Ver os lancamentos desta categoria")
 
             ui.label(f"{format_brl(spent_cents)} de").style(
-                f"font-size:12px;color:{theme.var('text2')}"
+                f"font-size:14px;color:{theme.var('text2')}"
             )
             budget_input = ui.number(
                 value=budget_cents / 100 if budget_cents else None,
@@ -101,20 +101,20 @@ def _category_row(category, month: str, cycle_start_day: int) -> None:
             with ui.row().style("width:100%;justify-content:space-between;margin-top:2px"):
                 if remaining >= 0:
                     ui.label(f"{format_brl(remaining)} restantes").style(
-                        f"font-size:11px;color:{theme.var('textm')}"
+                        f"font-size:15px;color:{theme.var('textm')}"
                     )
                 else:
                     ui.label(f"{format_brl(abs(remaining))} acima do limite").style(
-                        f"font-size:11px;color:{theme.var('red')}"
+                        f"font-size:15px;color:{theme.var('red')}"
                     )
                 if pace and pace["over_by_cents"] > 0:
                     ui.label(
                         f"No ritmo atual, estoura em {format_brl(pace['over_by_cents'])}"
-                    ).style(f"font-size:11px;color:{theme.var('amber')}")
+                    ).style(f"font-size:15px;color:{theme.var('amber')}")
                 elif pace:
                     ui.label(
                         f"Projecao: {format_brl(pace['projected_cents'])} ate o fim do ciclo"
-                    ).style(f"font-size:11px;color:{theme.var('textm')}")
+                    ).style(f"font-size:15px;color:{theme.var('textm')}")
         else:
             components.progress_track(0, theme.var("border"))
 
@@ -141,9 +141,9 @@ def _unbudgeted_section(month: str, cycle_start_day: int) -> None:
             ):
                 components.category_chip(category.icon, category.color, size="26px")
                 with ui.column().style("flex:1;gap:0"):
-                    ui.label(category.name).style(f"font-size:13px;color:{theme.var('text')}")
+                    ui.label(category.name).style(f"font-size:15px;color:{theme.var('text')}")
                     ui.label(f"Gasto neste ciclo: {format_brl(row['spent_cents'])}").style(
-                        f"font-size:11px;color:{theme.var('textm')}"
+                        f"font-size:15px;color:{theme.var('textm')}"
                     )
 
                 suggested = row["suggested_cents"]
@@ -158,7 +158,7 @@ def _unbudgeted_section(month: str, cycle_start_day: int) -> None:
                 ui.button(
                     f"Definir {format_brl(suggested)}", on_click=_apply
                 ).props("flat dense no-caps").style(
-                    f"color:{theme.var('accent2')};font-size:12px"
+                    f"color:{theme.var('accent2')};font-size:14px"
                 )
 
 
