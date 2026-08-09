@@ -26,8 +26,22 @@ def current_net_worth(session: Session) -> tuple[int, dict[int, int]]:
 
 
 def create_snapshot(session: Session, *, on_date: date | None = None) -> NetWorthSnapshot:
+    """Freezes today's net worth. Saving twice on the same day updates that day's
+    record instead of stacking duplicates."""
     on_date = on_date or date.today()
     total, breakdown = current_net_worth(session)
+
+    existing = session.exec(
+        select(NetWorthSnapshot).where(NetWorthSnapshot.date == on_date)
+    ).first()
+    if existing is not None:
+        existing.net_worth_cents = total
+        existing.breakdown_json = json.dumps(breakdown)
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        return existing
+
     snapshot = NetWorthSnapshot(
         date=on_date,
         net_worth_cents=total,
@@ -37,6 +51,26 @@ def create_snapshot(session: Session, *, on_date: date | None = None) -> NetWort
     session.commit()
     session.refresh(snapshot)
     return snapshot
+
+
+def ensure_monthly_snapshot(session: Session) -> NetWorthSnapshot | None:
+    """Saves one automatically if the current month has none.
+
+    Past net worth cannot be reconstructed later: for investments and physical
+    assets the app only ever knows the value at the moment it was adjusted. A
+    month that goes unrecorded is a hole in the history forever, so we stop
+    relying on the user remembering to press the button.
+    """
+    if not list_accounts(session):
+        return None  # nothing to photograph yet on a fresh install
+
+    today = date.today()
+    month_prefix = today.strftime("%Y-%m")
+    for snapshot in session.exec(select(NetWorthSnapshot)).all():
+        if snapshot.date.strftime("%Y-%m") == month_prefix:
+            return None
+
+    return create_snapshot(session, on_date=today)
 
 
 def trend(session: Session, *, months: int = 6) -> list[tuple[str, int]]:

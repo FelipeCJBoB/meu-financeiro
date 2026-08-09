@@ -101,7 +101,7 @@ def _category_row(category, month: str, cycle_start_day: int) -> None:
             with ui.row().style("width:100%;justify-content:space-between;margin-top:2px"):
                 if remaining >= 0:
                     ui.label(f"{format_brl(remaining)} restantes").style(
-                        f"font-size:15px;color:{theme.var('textm')}"
+                        f"font-size:13px;color:{theme.var('textm')}"
                     )
                 else:
                     ui.label(f"{format_brl(abs(remaining))} acima do limite").style(
@@ -114,7 +114,7 @@ def _category_row(category, month: str, cycle_start_day: int) -> None:
                 elif pace:
                     ui.label(
                         f"Projecao: {format_brl(pace['projected_cents'])} ate o fim do ciclo"
-                    ).style(f"font-size:15px;color:{theme.var('textm')}")
+                    ).style(f"font-size:13px;color:{theme.var('textm')}")
         else:
             components.progress_track(0, theme.var("border"))
 
@@ -143,7 +143,7 @@ def _unbudgeted_section(month: str, cycle_start_day: int) -> None:
                 with ui.column().style("flex:1;gap:0"):
                     ui.label(category.name).style(f"font-size:15px;color:{theme.var('text')}")
                     ui.label(f"Gasto neste ciclo: {format_brl(row['spent_cents'])}").style(
-                        f"font-size:15px;color:{theme.var('textm')}"
+                        f"font-size:13px;color:{theme.var('textm')}"
                     )
 
                 suggested = row["suggested_cents"]

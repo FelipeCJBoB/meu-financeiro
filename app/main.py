@@ -39,8 +39,21 @@ def perfil_page() -> None:
     perfil.render()
 
 
+def _auto_snapshot() -> None:
+    """One automatic net-worth record per month, on first launch of that month."""
+    from app.db import get_session
+    from app.services import networth
+
+    try:
+        with get_session() as session:
+            networth.ensure_monthly_snapshot(session)
+    except Exception:
+        pass  # never block startup over a bookkeeping convenience
+
+
 def main() -> None:
     init_db()
+    _auto_snapshot()
     native_mode = os.getenv("MEUFINANCEIRO_NATIVE", "1") != "0"
     port = (
         native.find_open_port()

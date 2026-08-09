@@ -49,7 +49,7 @@ def _transaction_row(session, tx) -> None:
         with ui.column().style("flex:1;gap:0"):
             ui.label(tx.description).style(f"font-size:15px;color:{theme.var('text')}")
             ui.label(f"{tx.date.strftime('%d/%m')} · {sub}").style(
-                f"font-size:15px;color:{theme.var('textm')}"
+                f"font-size:13px;color:{theme.var('textm')}"
             )
 
         if tx.type == TransactionType.income:
@@ -101,7 +101,7 @@ def _exception_banner(session, status: dict, on_changed) -> None:
                     )
                     ui.label(
                         f"Venceu em {rule.next_due_date.strftime('%d/%m/%Y')} · {format_brl(rule.amount_cents)}"
-                    ).style(f"font-size:15px;color:{theme.var('textm')}")
+                    ).style(f"font-size:13px;color:{theme.var('textm')}")
                 confirm_dialog = components.confirm_recurring_dialog(rule, on_changed)
                 ui.button("Confirmar", on_click=confirm_dialog.open).props(
                     "dense no-caps unelevated"
@@ -143,7 +143,7 @@ def _upcoming_payments_section(session) -> None:
                     account_name = account.name if account else ""
                     ui.label(
                         f"em {rule.next_due_date.strftime('%d/%m')} · {account_name}"
-                    ).style(f"font-size:15px;color:{theme.var('textm')}")
+                    ).style(f"font-size:13px;color:{theme.var('textm')}")
                 color = theme.var("green") if rule.type == TransactionType.income else theme.var("text2")
                 sign = "+" if rule.type == TransactionType.income else "-"
                 ui.label(f"{sign}{format_brl(rule.amount_cents)}").style(
@@ -313,7 +313,7 @@ def render() -> None:
                     nw_arrow = "▲" if nw_delta >= 0 else "▼"
                     nw_delta_text = (
                         f"{nw_arrow} {format_brl(abs(nw_delta))} "
-                        f"({abs(nw_delta) / abs(previous_net_worth) * 100:.1f}%) vs snapshot anterior"
+                        f"({abs(nw_delta) / abs(previous_net_worth) * 100:.1f}%) vs mes anterior"
                     )
                     nw_delta_color = theme.var("green") if nw_delta >= 0 else theme.var("red")
                 else:
@@ -453,7 +453,10 @@ def render() -> None:
                     with components.card():
                         components.section_label(
                             "Evolucao do patrimonio",
-                            help_text="Baseado nos snapshots que voce registra manualmente na tela Patrimonio.",
+                            help_text=(
+                                "Uma foto do seu patrimonio por mes, salva automaticamente no "
+                                "primeiro acesso de cada mes."
+                            ),
                         )
                         ui.plotly(net_worth_figure(height=180, months=chart_months)).style(
                             "width:100%;height:180px"

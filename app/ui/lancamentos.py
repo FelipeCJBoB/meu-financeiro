@@ -388,7 +388,7 @@ def _due_recurring_section(session, on_changed) -> None:
                     ui.label(rule.description).style(f"font-size:15px;color:{theme.var('text')}")
                     ui.label(
                         f"Vencido em {rule.next_due_date.strftime('%d/%m/%Y')} · {format_brl(rule.amount_cents)}"
-                    ).style(f"font-size:15px;color:{theme.var('textm')}")
+                    ).style(f"font-size:13px;color:{theme.var('textm')}")
 
                 def _skip(rule_id=rule.id) -> None:
                     with get_session() as s2:
@@ -482,7 +482,7 @@ def _row(session, tx) -> None:
         with ui.column().style("flex:1;gap:0"):
             ui.label(tx.description).style(f"font-size:15px;color:{theme.var('text')}")
             ui.label(f"{tx.date.strftime('%d/%m/%Y')} · {sub}").style(
-                f"font-size:15px;color:{theme.var('textm')}"
+                f"font-size:13px;color:{theme.var('textm')}"
             )
 
         if tx.type == TransactionType.income:

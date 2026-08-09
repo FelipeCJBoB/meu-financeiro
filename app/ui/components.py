@@ -297,7 +297,7 @@ def manage_account_dialog(account, on_saved: Callable[[], None]) -> ui.dialog:
         ui.label(
             "Arquivar esconde a conta das telas, mas mantem o historico intacto. "
             "Excluir remove a conta e tudo que esta vinculado a ela, sem volta."
-        ).style(f"font-size:15px;color:{theme.var('textm')};margin-top:4px")
+        ).style(f"font-size:13px;color:{theme.var('textm')};margin-top:4px")
 
         confirm_delete = ui.checkbox(
             f"Confirmo excluir a conta e {vinculo_text}"

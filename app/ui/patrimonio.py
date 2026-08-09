@@ -81,7 +81,7 @@ def _account_row(row) -> None:
         with ui.column().style("flex:1;gap:0"):
             ui.label(account.name).style(f"font-size:15px;color:{theme.var('text')}")
             ui.label(ACCOUNT_TYPE_LABELS.get(account.type, "")).style(
-                f"font-size:15px;color:{theme.var('textm')}"
+                f"font-size:13px;color:{theme.var('textm')}"
             )
         ui.label(format_brl(row["balance_cents"])).style(
             f"font-size:15px;color:{theme.var('text')};margin-right:8px"
@@ -112,7 +112,7 @@ def _forecast_section(horizon_days: int) -> None:
             "A linha soma suas recorrências ativas ao saldo atual - não tenta prever gastos "
             "avulsos. A faixa ao redor reflete a variação real das suas despesas nos últimos "
             "meses (mais larga quanto mais longe no tempo); não é uma garantia estatística."
-        ).style(f"font-size:15px;color:{theme.var('textm')};margin-bottom:8px")
+        ).style(f"font-size:13px;color:{theme.var('textm')};margin-bottom:8px")
         ui.plotly(forecast_figure(height=200, horizon_days=horizon_days)).style(
             "width:100%;height:200px"
         )
@@ -124,8 +124,10 @@ def _evolution_section(months: int) -> None:
         components.section_label(
             "Evolução do patrimônio líquido",
             help_text=(
-                "Um ponto por snapshot registrado. Barras mostram quanto veio de aporte "
-                "(dinheiro que voce colocou) e quanto veio de ganho/perda de valor."
+                "Um ponto por mes salvo. O app guarda uma foto do seu patrimonio "
+                "automaticamente no primeiro acesso de cada mes. As barras mostram "
+                "quanto veio de aporte (dinheiro que voce colocou) e quanto veio de "
+                "ganho ou perda de valor."
             ),
         )
         ui.plotly(net_worth_figure(height=240, months=months)).style("width:100%;height:240px")
@@ -155,7 +157,7 @@ def render() -> None:
             arrow = "▲" if delta >= 0 else "▼"
             delta_text = (
                 f"{arrow} {format_brl(abs(delta))} "
-                f"({abs(delta) / abs(previous_net_worth) * 100:.1f}%) vs snapshot anterior"
+                f"({abs(delta) / abs(previous_net_worth) * 100:.1f}%) vs mes anterior"
             )
             delta_color = theme.var("green") if delta >= 0 else theme.var("red")
         else:
@@ -171,12 +173,17 @@ def render() -> None:
                 def _snapshot() -> None:
                     with get_session() as session2:
                         networth_service.create_snapshot(session2)
+                    ui.notify("Patrimonio de hoje salvo no historico")
                     ui.navigate.reload()
 
-                ui.button("Registrar snapshot", icon="camera", on_click=_snapshot).props(
-                    "flat no-caps dense"
-                ).style(f"color:{theme.var('text2')}").tooltip(
-                    "Salva uma foto do patrimonio de hoje, usada no grafico de evolucao"
+                ui.button(
+                    "Salvar patrimonio de hoje", icon="photo_camera", on_click=_snapshot
+                ).props("flat no-caps dense").style(
+                    f"color:{theme.var('text2')}"
+                ).tooltip(
+                    "Guarda quanto voce tem hoje, para o grafico de evolucao poder comparar "
+                    "com os meses anteriores. O app ja faz isso sozinho uma vez por mes; use "
+                    "aqui se quiser marcar uma data extra, como o dia que recebeu o 13o."
                 )
 
                 account_dialog = components.new_account_dialog(lambda: ui.navigate.reload())

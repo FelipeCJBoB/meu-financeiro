@@ -169,7 +169,7 @@ def _contributions_dialog(goal, on_saved) -> ui.dialog:
                         f"font-size:15px;color:{theme.var('green')}"
                     )
                     ui.label(f"{entry['date']}{' · ' + entry['note'] if entry['note'] else ''}").style(
-                        f"font-size:15px;color:{theme.var('textm')}"
+                        f"font-size:13px;color:{theme.var('textm')}"
                     )
 
                 def _remove(contribution_id=entry["id"]) -> None:
@@ -241,11 +241,11 @@ def _goal_card(session, goal) -> None:
                 )
             if months_left is not None and months_left > 0:
                 ui.label(f"No seu ritmo real: {months_left} mes(es) para concluir").style(
-                    f"font-size:15px;color:{theme.var('textm')};margin-top:2px"
+                    f"font-size:13px;color:{theme.var('textm')};margin-top:2px"
                 )
             elif months_left is None:
                 ui.label("Sem aportes suficientes para estimar o ritmo").style(
-                    f"font-size:15px;color:{theme.var('textm')};margin-top:2px"
+                    f"font-size:13px;color:{theme.var('textm')};margin-top:2px"
                 )
 
         contributions = _contributions_dialog(goal, lambda: ui.navigate.reload())
