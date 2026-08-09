@@ -72,6 +72,72 @@ def create_transaction(
     return transaction
 
 
+def update_transaction(
+    session: Session,
+    transaction_id: int,
+    *,
+    date_: date,
+    description: str,
+    account_id: int,
+    type_: TransactionType,
+    amount_cents: int,
+    category_id: int | None = None,
+    transfer_account_id: int | None = None,
+    splits: list[dict] | None = None,
+    notes: str | None = None,
+) -> Transaction:
+    transaction = session.get(Transaction, transaction_id)
+    if transaction is None:
+        raise TransactionError("Lancamento nao encontrado")
+
+    if type_ == TransactionType.transfer:
+        if not transfer_account_id:
+            raise TransactionError("Transferencia precisa de uma conta de destino")
+        if transfer_account_id == account_id:
+            raise TransactionError("Conta de origem e destino nao podem ser iguais")
+        category_id = None
+    elif type_ != TransactionType.adjustment and category_id is None and not splits:
+        raise TransactionError("Informe uma categoria ou divida o lancamento")
+
+    if splits:
+        total_split = sum(item["amount_cents"] for item in splits)
+        if total_split != amount_cents:
+            raise TransactionError("A soma das divisoes deve ser igual ao valor total")
+        category_id = None
+
+    transaction.date = date_
+    transaction.description = description
+    transaction.account_id = account_id
+    transaction.type = type_
+    transaction.amount_cents = amount_cents
+    transaction.category_id = category_id
+    transaction.transfer_account_id = (
+        transfer_account_id if type_ == TransactionType.transfer else None
+    )
+    if notes is not None:
+        transaction.notes = notes
+    session.add(transaction)
+
+    existing_splits = session.exec(
+        select(TransactionSplit).where(TransactionSplit.transaction_id == transaction_id)
+    ).all()
+    for split in existing_splits:
+        session.delete(split)
+    if splits:
+        for item in splits:
+            session.add(
+                TransactionSplit(
+                    transaction_id=transaction_id,
+                    category_id=item["category_id"],
+                    amount_cents=item["amount_cents"],
+                )
+            )
+
+    session.commit()
+    session.refresh(transaction)
+    return transaction
+
+
 def delete_transaction(session: Session, transaction_id: int) -> None:
     splits = session.exec(
         select(TransactionSplit).where(TransactionSplit.transaction_id == transaction_id)

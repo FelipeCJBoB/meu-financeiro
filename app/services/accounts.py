@@ -56,6 +56,73 @@ def account_balance_cents(session: Session, account_id: int) -> int:
     return total
 
 
+def update_account(
+    session: Session,
+    account_id: int,
+    *,
+    name: str | None = None,
+    type: AccountType | None = None,
+) -> Account:
+    account = session.get(Account, account_id)
+    if account is None:
+        raise ValueError(f"Conta {account_id} nao encontrada")
+    if name is not None:
+        account.name = name
+    if type is not None:
+        account.type = type
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+    return account
+
+
+def set_archived(session: Session, account_id: int, archived: bool) -> Account:
+    account = session.get(Account, account_id)
+    if account is None:
+        raise ValueError(f"Conta {account_id} nao encontrada")
+    account.archived = archived
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+    return account
+
+
+def transaction_count(session: Session, account_id: int) -> int:
+    own = session.exec(select(Transaction).where(Transaction.account_id == account_id)).all()
+    incoming = session.exec(
+        select(Transaction).where(Transaction.transfer_account_id == account_id)
+    ).all()
+    return len(own) + len(incoming)
+
+
+def delete_account(session: Session, account_id: int, *, cascade: bool = False) -> None:
+    """Removes an account. Refuses to silently orphan history: without cascade,
+    an account that still has transactions raises instead of deleting."""
+    from app.services.transactions import delete_transaction
+
+    account = session.get(Account, account_id)
+    if account is None:
+        return
+
+    related = session.exec(select(Transaction).where(Transaction.account_id == account_id)).all()
+    incoming = session.exec(
+        select(Transaction).where(Transaction.transfer_account_id == account_id)
+    ).all()
+    all_related = {tx.id: tx for tx in list(related) + list(incoming)}
+
+    if all_related and not cascade:
+        raise ValueError(
+            f"A conta tem {len(all_related)} lancamentos. Arquive a conta ou confirme a "
+            f"exclusao junto com o historico."
+        )
+
+    for tx_id in all_related:
+        delete_transaction(session, tx_id)
+
+    session.delete(account)
+    session.commit()
+
+
 def adjust_balance(session: Session, account_id: int, new_balance_cents: int, *, description: str = "Ajuste de saldo") -> Transaction:
     from app.services.transactions import create_transaction
     from datetime import date as date_cls

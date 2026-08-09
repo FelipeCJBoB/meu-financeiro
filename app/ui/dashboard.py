@@ -185,7 +185,7 @@ def render() -> None:
 
             _exception_banner(session, status, lambda: ui.navigate.reload())
 
-            with ui.row().style("width:100%;gap:12px;flex-wrap:wrap"):
+            with components.kpi_grid():
                 if available:
                     free = available["available_cents"]
                     allowance_text = (
@@ -252,44 +252,43 @@ def render() -> None:
                         help_text="Percentual do total orcado nas categorias que ja foi gasto neste ciclo.",
                     )
 
-            with ui.row().style("width:100%;gap:16px;flex-wrap:wrap;align-items:stretch"):
-                with ui.column().style("flex:1;min-width:280px;gap:8px"):
-                    with components.card():
-                        components.section_label(
-                            "Patrimonio nos ultimos 6 meses",
-                            help_text="Baseado nos snapshots que voce registra manualmente na tela Patrimonio.",
+            with components.panel_grid():
+                with components.card():
+                    components.section_label(
+                        "Patrimonio nos ultimos 6 meses",
+                        help_text="Baseado nos snapshots que voce registra manualmente na tela Patrimonio.",
+                    )
+                    ui.plotly(net_worth_figure(height=160)).style("width:100%;height:160px")
+
+                with components.card():
+                    components.section_label(
+                        "Receitas vs. despesas por mes",
+                        help_text="Ultimos 6 ciclos ancorados no mes que voce esta vendo.",
+                    )
+                    ui.plotly(
+                        monthly_comparison_figure(month, cycle_start_day, height=160)
+                    ).style("width:100%;height:160px")
+
+            with components.panel_grid():
+                _upcoming_payments_section(session)
+
+                with components.card():
+                    components.section_label("Metas em andamento")
+                    goal_list = goals.list_goals(session)[:3]
+                    if not goal_list:
+                        components.empty_state("Nenhuma meta ainda", icon="flag")
+                    for goal in goal_list:
+                        pct = goals.progress_pct(goal)
+                        with ui.row().style(
+                            "width:100%;justify-content:space-between;"
+                            "font-size:13px;margin-bottom:4px"
+                        ):
+                            ui.label(goal.name).style(f"color:{theme.var('text')}")
+                            ui.label(f"{pct * 100:.0f}%").style(f"color:{theme.var('text2')}")
+                        components.progress_track(
+                            pct, theme.var("accent"),
+                            marker_pct=goals.expected_progress_pct(goal),
                         )
-                        ui.plotly(net_worth_figure(height=160)).style("width:100%;height:160px")
-
-                with ui.column().style("flex:1;min-width:280px;gap:8px"):
-                    with components.card():
-                        components.section_label(
-                            "Receitas vs. despesas por mes",
-                            help_text="Ultimos 6 ciclos ancorados no mes que voce esta vendo.",
-                        )
-                        ui.plotly(
-                            monthly_comparison_figure(month, cycle_start_day, height=160)
-                        ).style("width:100%;height:160px")
-
-            with ui.row().style("width:100%;gap:16px;flex-wrap:wrap;align-items:stretch"):
-                with ui.column().style("flex:1;min-width:280px;gap:8px"):
-                    _upcoming_payments_section(session)
-
-                with ui.column().style("flex:1;min-width:280px;gap:8px"):
-                    with components.card():
-                        components.section_label("Metas em andamento")
-                        goal_list = goals.list_goals(session)[:2]
-                        if not goal_list:
-                            components.empty_state("Nenhuma meta ainda", icon="flag")
-                        for goal in goal_list:
-                            pct = goals.progress_pct(goal)
-                            with ui.row().style(
-                                "width:100%;justify-content:space-between;"
-                                "font-size:13px;margin-bottom:4px"
-                            ):
-                                ui.label(goal.name).style(f"color:{theme.var('text')}")
-                                ui.label(f"{pct * 100:.0f}%").style(f"color:{theme.var('text2')}")
-                            components.progress_track(pct, theme.var("accent"))
 
             sankey = sankey_figure(month, cycle_start_day, height=260)
             if sankey is not None:

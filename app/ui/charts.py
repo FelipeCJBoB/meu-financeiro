@@ -251,7 +251,7 @@ def budget_comparison_figure(month: str, cycle_start_day: int = 1) -> go.Figure:
 
 def composition_donut_figure(*, height: int = 220) -> go.Figure:
     with get_session() as session:
-        rows = networth.composition(session)
+        rows = networth.balance_sheet(session)["assets"]
     t = theme.current()
     rows = [r for r in rows if r["balance_cents"] > 0]
 
@@ -278,6 +278,92 @@ def composition_donut_figure(*, height: int = 220) -> go.Figure:
         paper_bgcolor="rgba(0,0,0,0)",
         showlegend=True,
         legend=dict(orientation="v", font=dict(size=11, color=t["text2"])),
+        font=dict(size=11),
+    )
+    return fig
+
+
+def budget_history_figure(
+    end_month: str, cycle_start_day: int = 1, *, height: int = 200, months: int = 6
+) -> go.Figure:
+    with get_session() as session:
+        rows = budgets_service.budget_history(
+            session, end_month=end_month, months=months, cycle_start_day=cycle_start_day
+        )
+    t = theme.current()
+    x = [r["month"] for r in rows]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=x,
+            y=[r["budget_cents"] / 100 for r in rows],
+            name="Orcado",
+            marker=dict(color=theme.rgba(t["textm"], 0.30)),
+            hovertemplate="Orcado: R$ %{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=x,
+            y=[r["spent_cents"] / 100 for r in rows],
+            name="Gasto",
+            marker=dict(color=t["accent"]),
+            hovertemplate="Gasto: R$ %{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        barmode="group",
+        margin=dict(l=0, r=0, t=28, b=0),
+        height=height,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
+        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10, color=t["text2"])),
+        font=dict(size=11),
+    )
+    return fig
+
+
+def goal_progress_figure(goal, *, height: int = 200) -> go.Figure:
+    from app.services import goals as goals_service
+
+    with get_session() as session:
+        series = goals_service.progress_series(session, goal)
+    t = theme.current()
+
+    fig = go.Figure()
+    if series["planned_dates"]:
+        fig.add_trace(
+            go.Scatter(
+                x=series["planned_dates"],
+                y=[v / 100 for v in series["planned_values"]],
+                mode="lines",
+                name="Planejado",
+                line=dict(color=t["textm"], width=1.5, dash="dash"),
+                hovertemplate="Planejado: R$ %{y:,.2f}<extra></extra>",
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=series["actual_dates"],
+            y=[v / 100 for v in series["actual_values"]],
+            mode="lines+markers",
+            name="Real",
+            line=dict(color=t["accent"], width=2, shape="hv"),
+            marker=dict(size=5, color=t["accent"]),
+            hovertemplate="Real: R$ %{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=28, b=0),
+        height=height,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, color=t["textm"], type="date"),
+        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10, color=t["text2"])),
         font=dict(size=11),
     )
     return fig

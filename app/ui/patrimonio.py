@@ -15,11 +15,23 @@ from app.ui.layout import page_frame
 
 HORIZON_LABELS = {30: "30 dias", 60: "60 dias", 90: "90 dias"}
 
+ACCOUNT_TYPE_LABELS = {
+    AccountType.checking: "Conta corrente",
+    AccountType.savings: "Poupanca / reserva",
+    AccountType.credit_card: "Cartao de credito",
+    AccountType.investment: "Investimento",
+    AccountType.physical_asset: "Bem fisico",
+    AccountType.loan: "Emprestimo / financiamento",
+    AccountType.other: "Outro",
+}
+
 ACCOUNT_TYPE_ICON = {
     AccountType.checking: "account_balance",
     AccountType.savings: "savings",
     AccountType.credit_card: "credit_card",
     AccountType.investment: "trending_up",
+    AccountType.physical_asset: "home",
+    AccountType.loan: "request_quote",
     AccountType.other: "folder",
 }
 
@@ -68,13 +80,20 @@ def _account_row(row) -> None:
         )
         with ui.column().style("flex:1;gap:0"):
             ui.label(account.name).style(f"font-size:13px;color:{theme.var('text')}")
+            ui.label(ACCOUNT_TYPE_LABELS.get(account.type, "")).style(
+                f"font-size:11px;color:{theme.var('textm')}"
+            )
         ui.label(format_brl(row["balance_cents"])).style(
             f"font-size:13px;color:{theme.var('text')};margin-right:8px"
         )
-        dialog = _adjust_balance_dialog(account, lambda: ui.navigate.reload())
-        ui.button(icon="tune", on_click=dialog.open).props("flat dense round").style(
+        adjust = _adjust_balance_dialog(account, lambda: ui.navigate.reload())
+        ui.button(icon="tune", on_click=adjust.open).props("flat dense round").style(
             f"color:{theme.var('text2')}"
-        )
+        ).tooltip("Ajustar saldo")
+        manage = components.manage_account_dialog(account, lambda: ui.navigate.reload())
+        ui.button(icon="settings", on_click=manage.open).props("flat dense round").style(
+            f"color:{theme.var('text2')}"
+        ).tooltip("Renomear, arquivar ou excluir")
 
 
 @ui.refreshable
@@ -99,16 +118,55 @@ def _forecast_section(horizon_days: int) -> None:
         )
 
 
+@ui.refreshable
+def _evolution_section(months: int) -> None:
+    with components.card():
+        components.section_label(
+            "Evolução do patrimônio líquido",
+            help_text=(
+                "Um ponto por snapshot registrado. Barras mostram quanto veio de aporte "
+                "(dinheiro que voce colocou) e quanto veio de ganho/perda de valor."
+            ),
+        )
+        ui.plotly(net_worth_figure(height=240, months=months)).style("width:100%;height:240px")
+
+
+def _account_list(rows, *, title: str, help_text: str, empty: str) -> None:
+    with components.card():
+        components.section_label(title, help_text=help_text)
+        if not rows:
+            components.empty_state(empty, icon="account_balance_wallet")
+        for row in rows:
+            _account_row(row)
+
+
 def render() -> None:
     with page_frame("/patrimonio"):
         with get_session() as session:
-            total, _ = networth_service.current_net_worth(session)
-            composition = networth_service.composition(session)
+            sheet = networth_service.balance_sheet(session)
+            indicators = networth_service.health_indicators(session)
+            committed = networth_service.committed_to_goals_cents(session)
+            trend_points = networth_service.trend(session, months=2)
 
-        with ui.row().style("width:100%;justify-content:space-between;align-items:center"):
-            ui.label(f"Patrimônio total · {format_brl(total)}").style(
-                f"font-size:13px;color:{theme.var('text2')}"
+        net_worth = sheet["net_worth_cents"]
+        previous_net_worth = trend_points[0][1] if len(trend_points) > 1 else None
+        if previous_net_worth is not None and previous_net_worth != 0:
+            delta = net_worth - previous_net_worth
+            arrow = "▲" if delta >= 0 else "▼"
+            delta_text = (
+                f"{arrow} {format_brl(abs(delta))} "
+                f"({abs(delta) / abs(previous_net_worth) * 100:.1f}%) vs snapshot anterior"
             )
+            delta_color = theme.var("green") if delta >= 0 else theme.var("red")
+        else:
+            delta_text, delta_color = "", None
+
+        free_cents = max(0, sheet["liquid_cents"] - committed)
+
+        with ui.row().style(
+            "width:100%;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"
+        ):
+            components.section_label("Patrimônio")
             with ui.row().style("gap:8px"):
                 def _snapshot() -> None:
                     with get_session() as session2:
@@ -117,44 +175,97 @@ def render() -> None:
 
                 ui.button("Registrar snapshot", icon="camera", on_click=_snapshot).props(
                     "flat no-caps dense"
-                ).style(f"color:{theme.var('text2')}")
+                ).style(f"color:{theme.var('text2')}").tooltip(
+                    "Salva uma foto do patrimonio de hoje, usada no grafico de evolucao"
+                )
 
                 account_dialog = components.new_account_dialog(lambda: ui.navigate.reload())
                 ui.button("Nova conta", icon="add", on_click=account_dialog.open).props(
                     "no-caps unelevated"
                 ).style(f"background:{theme.var('accent')};color:{theme.var('s1')}")
 
-        with components.card():
-            components.section_label(
-                "Evolução do patrimônio líquido",
-                help_text="Um ponto por snapshot registrado. Passe o mouse sobre o grafico para ver o valor exato de cada mes.",
+        with components.kpi_grid():
+            components.kpi_card(
+                "Patrimonio liquido",
+                format_brl(net_worth),
+                sub=f"Ativos {format_brl(sheet['assets_cents'])} - dividas {format_brl(sheet['liabilities_cents'])}",
+                delta_text=delta_text,
+                delta_color=delta_color,
+                help_text="Tudo que voce tem menos tudo que voce deve.",
             )
-            ui.plotly(net_worth_figure(height=220, months=12)).style("width:100%;height:220px")
+            components.kpi_card(
+                "Disponivel de imediato",
+                format_brl(sheet["liquid_cents"]),
+                sub=f"{format_brl(sheet['illiquid_cents'])} em ativos menos liquidos",
+                help_text=(
+                    "Soma das contas correntes e poupancas - o que voce consegue acessar "
+                    "rapidamente numa emergencia. Investimentos e bens fisicos ficam de fora."
+                ),
+            )
+            components.kpi_card(
+                "Livre vs. comprometido",
+                format_brl(free_cents),
+                sub=f"{format_brl(committed)} ja reservado para metas",
+                help_text=(
+                    "Do dinheiro disponivel de imediato, quanto ainda nao esta prometido "
+                    "para nenhuma meta em andamento."
+                ),
+            )
+            if indicators["debt_ratio"] is not None:
+                ratio = indicators["debt_ratio"]
+                components.kpi_card(
+                    "Dividas sobre ativos",
+                    f"{ratio * 100:.0f}%",
+                    sub=(
+                        "Quanto menor, mais folga"
+                        if ratio < 0.5
+                        else "Parcela relevante do que voce tem esta comprometida"
+                    ),
+                    value_color=theme.var("green") if ratio < 0.5 else theme.var("amber"),
+                    help_text="Total de dividas dividido pelo total de ativos.",
+                )
 
-        with ui.row().style("width:100%;gap:6px"):
+        with ui.row().style("width:100%;gap:6px;align-items:center"):
+            ui.label("Periodo do grafico").style(
+                f"font-size:12px;color:{theme.var('textm')};margin-right:4px"
+            )
+            for months, label in {6: "6 meses", 12: "12 meses", 60: "Tudo"}.items():
+                ui.button(
+                    label, on_click=lambda m=months: _evolution_section.refresh(m)
+                ).props("flat dense no-caps").style(f"color:{theme.var('text2')}")
+        _evolution_section(12)
+
+        with ui.row().style("width:100%;gap:6px;align-items:center"):
+            ui.label("Horizonte da projecao").style(
+                f"font-size:12px;color:{theme.var('textm')};margin-right:4px"
+            )
             for days, label in HORIZON_LABELS.items():
                 ui.button(
                     label, on_click=lambda d=days: _forecast_section.refresh(d)
                 ).props("flat dense no-caps").style(f"color:{theme.var('text2')}")
         _forecast_section(30)
 
-        with ui.row().style("width:100%;gap:16px;flex-wrap:wrap;align-items:stretch"):
-            positive_accounts = [r for r in composition if r["balance_cents"] > 0]
-            if positive_accounts:
-                with ui.column().style("flex:1;min-width:260px;gap:8px"):
-                    with components.card():
-                        components.section_label(
-                            "Distribuição por conta",
-                            help_text="Proporcao do patrimonio positivo em cada conta. Contas negativas (ex: cartao) nao entram no donut.",
-                        )
-                        ui.plotly(composition_donut_figure(height=220)).style("width:100%")
+        with components.panel_grid():
+            _account_list(
+                sheet["assets"],
+                title=f"Ativos · {format_brl(sheet['assets_cents'])}",
+                help_text="Tudo que voce possui: contas, investimentos e bens fisicos.",
+                empty="Nenhum ativo cadastrado",
+            )
+            _account_list(
+                sheet["liabilities"],
+                title=f"Dividas · {format_brl(sheet['liabilities_cents'])}",
+                help_text=(
+                    "Cartoes de credito, emprestimos e financiamentos. Sao mostrados como "
+                    "valor positivo aqui, mas subtraem do patrimonio liquido."
+                ),
+                empty="Nenhuma divida cadastrada",
+            )
 
-            with ui.column().style("flex:1.3;min-width:280px;gap:8px"):
-                with components.card():
-                    components.section_label("Composição atual")
-                    if not composition:
-                        components.empty_state(
-                            "Nenhuma conta cadastrada", icon="account_balance_wallet"
-                        )
-                    for row in composition:
-                        _account_row(row)
+        if sheet["assets"]:
+            with components.card():
+                components.section_label(
+                    "Distribuição dos ativos",
+                    help_text="Proporcao do que voce possui em cada conta. Dividas nao entram aqui.",
+                )
+                ui.plotly(composition_donut_figure(height=240)).style("width:100%")

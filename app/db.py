@@ -46,6 +46,7 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("goals", "created_at", f"TEXT DEFAULT '{date.today().isoformat()}'"),
     ("settings", "window_width", "INTEGER DEFAULT 2560"),
     ("settings", "window_height", "INTEGER DEFAULT 1440"),
+    ("goals", "status", "TEXT DEFAULT 'active'"),
 ]
 
 
@@ -60,11 +61,35 @@ def _run_migrations() -> None:
         conn.commit()
 
 
+def _backfill_goal_contributions(session: Session) -> None:
+    """Goals created before the contribution log existed carry a balance with no
+    history. Seed one opening entry so the log always sums to the stored total."""
+    from app.models import Goal, GoalContribution
+
+    goals = session.exec(select(Goal).where(Goal.current_amount_cents > 0)).all()
+    for goal in goals:
+        has_history = session.exec(
+            select(GoalContribution).where(GoalContribution.goal_id == goal.id)
+        ).first()
+        if has_history is not None:
+            continue
+        session.add(
+            GoalContribution(
+                goal_id=goal.id,
+                date=goal.created_at,
+                amount_cents=goal.current_amount_cents,
+                note="Saldo inicial",
+            )
+        )
+    session.commit()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _run_migrations()
     with Session(engine) as session:
         _seed_categories(session)
+        _backfill_goal_contributions(session)
 
 
 def _seed_categories(session: Session) -> None:

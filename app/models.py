@@ -11,7 +11,19 @@ class AccountType(str, Enum):
     savings = "savings"
     credit_card = "credit_card"
     investment = "investment"
+    physical_asset = "physical_asset"
+    loan = "loan"
     other = "other"
+
+
+LIABILITY_TYPES = {AccountType.credit_card, AccountType.loan}
+LIQUID_TYPES = {AccountType.checking, AccountType.savings}
+
+
+class GoalStatus(str, Enum):
+    active = "active"
+    paused = "paused"
+    completed = "completed"
 
 
 class CategoryKind(str, Enum):
@@ -128,6 +140,17 @@ class Goal(SQLModel, table=True):
     linked_account_id: int | None = Field(default=None, foreign_key="accounts.id")
     archived: bool = False
     created_at: date = Field(default_factory=date.today)
+    status: GoalStatus = GoalStatus.active
+
+
+class GoalContribution(SQLModel, table=True):
+    __tablename__ = "goal_contributions"
+
+    id: int | None = Field(default=None, primary_key=True)
+    goal_id: int = Field(foreign_key="goals.id")
+    date: date
+    amount_cents: int
+    note: str | None = None
 
 
 class NetWorthSnapshot(SQLModel, table=True):

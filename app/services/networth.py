@@ -5,7 +5,13 @@ from datetime import date
 
 from sqlmodel import Session, select
 
-from app.models import NetWorthSnapshot, Transaction, TransactionType
+from app.models import (
+    LIABILITY_TYPES,
+    LIQUID_TYPES,
+    NetWorthSnapshot,
+    Transaction,
+    TransactionType,
+)
 from app.services.accounts import account_balance_cents, list_accounts
 
 
@@ -87,6 +93,82 @@ def evolution_breakdown(session: Session, *, months: int = 6) -> list[dict]:
             {"month": month_label, "contributed_cents": contributed_cents, "gain_cents": gain_cents}
         )
     return rows
+
+
+def balance_sheet(session: Session) -> dict:
+    """Splits accounts into assets and liabilities instead of one mixed signed total.
+
+    A credit card at -R$300 is a debt, not a 'negative asset' - keeping them in one
+    column hides how much you own and how much you owe.
+    """
+    assets: list[dict] = []
+    liabilities: list[dict] = []
+    liquid_cents = 0
+    illiquid_cents = 0
+
+    for account in list_accounts(session):
+        balance = account_balance_cents(session, account.id)
+        row = {"account": account, "balance_cents": balance}
+        if account.type in LIABILITY_TYPES or balance < 0:
+            liabilities.append({**row, "balance_cents": abs(balance)})
+        else:
+            assets.append(row)
+            if account.type in LIQUID_TYPES:
+                liquid_cents += balance
+            else:
+                illiquid_cents += balance
+
+    assets.sort(key=lambda row: row["balance_cents"], reverse=True)
+    liabilities.sort(key=lambda row: row["balance_cents"], reverse=True)
+
+    assets_cents = sum(row["balance_cents"] for row in assets)
+    liabilities_cents = sum(row["balance_cents"] for row in liabilities)
+
+    return {
+        "assets": assets,
+        "liabilities": liabilities,
+        "assets_cents": assets_cents,
+        "liabilities_cents": liabilities_cents,
+        "net_worth_cents": assets_cents - liabilities_cents,
+        "liquid_cents": liquid_cents,
+        "illiquid_cents": illiquid_cents,
+    }
+
+
+def health_indicators(session: Session) -> dict:
+    """Debt ratio and savings rate - two numbers that say more than the total alone."""
+    sheet = balance_sheet(session)
+    debt_ratio = (
+        sheet["liabilities_cents"] / sheet["assets_cents"] if sheet["assets_cents"] > 0 else None
+    )
+
+    incomes = session.exec(
+        select(Transaction).where(Transaction.type == TransactionType.income)
+    ).all()
+    expenses = session.exec(
+        select(Transaction).where(Transaction.type == TransactionType.expense)
+    ).all()
+    income_total = sum(tx.amount_cents for tx in incomes)
+    expense_total = sum(tx.amount_cents for tx in expenses)
+    savings_rate = (income_total - expense_total) / income_total if income_total > 0 else None
+
+    return {
+        "debt_ratio": debt_ratio,
+        "savings_rate": savings_rate,
+        "liquid_cents": sheet["liquid_cents"],
+        "illiquid_cents": sheet["illiquid_cents"],
+    }
+
+
+def committed_to_goals_cents(session: Session) -> int:
+    from app.models import GoalStatus
+    from app.services.goals import list_goals
+
+    return sum(
+        goal.current_amount_cents
+        for goal in list_goals(session)
+        if goal.status != GoalStatus.completed
+    )
 
 
 def composition(session: Session) -> list[dict]:

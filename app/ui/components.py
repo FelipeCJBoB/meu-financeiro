@@ -13,8 +13,10 @@ from app.services.money import format_brl, format_month_label, to_cents
 ACCOUNT_TYPE_LABELS = {
     AccountType.checking.value: "Conta corrente",
     AccountType.savings.value: "Poupanca / reserva",
-    AccountType.credit_card.value: "Cartao de credito",
     AccountType.investment.value: "Investimento",
+    AccountType.physical_asset.value: "Bem fisico (imovel, carro)",
+    AccountType.credit_card.value: "Cartao de credito (divida)",
+    AccountType.loan.value: "Emprestimo / financiamento (divida)",
     AccountType.other.value: "Outro",
 }
 
@@ -34,6 +36,21 @@ def card(*, padding: str = "1rem", grow: bool = False) -> ui.column:
         + (";flex:1" if grow else "")
     )
     return element
+
+
+def kpi_grid(*, min_width: str = "230px") -> ui.element:
+    """Auto-fitting grid so KPI cards share a row instead of each taking full width."""
+    return ui.element("div").style(
+        f"width:100%;display:grid;gap:12px;"
+        f"grid-template-columns:repeat(auto-fit,minmax({min_width},1fr))"
+    )
+
+
+def panel_grid(*, min_width: str = "340px") -> ui.element:
+    return ui.element("div").style(
+        f"width:100%;display:grid;gap:16px;align-items:start;"
+        f"grid-template-columns:repeat(auto-fit,minmax({min_width},1fr))"
+    )
 
 
 def info_icon(text: str, *, size: str = "13px") -> None:
@@ -168,6 +185,88 @@ def new_account_dialog(on_created: Callable[[], None]) -> ui.dialog:
             ui.button("Criar conta", on_click=_save).props("no-caps unelevated").style(
                 f"background:{theme.var('accent')};color:{theme.var('s1')}"
             )
+    return dialog
+
+
+def manage_account_dialog(account, on_saved: Callable[[], None]) -> ui.dialog:
+    with get_session() as session:
+        tx_count = accounts_service.transaction_count(session, account.id)
+
+    with ui.dialog() as dialog, card(padding="1.25rem"):
+        ui.label(f"Gerenciar conta · {account.name}").style(
+            f"font-size:15px;font-weight:500;color:{theme.var('text')};margin-bottom:8px"
+        )
+
+        name_input = ui.input("Nome da conta", value=account.name).props(
+            "outlined dense"
+        ).style("width:100%")
+        type_select = ui.select(
+            dict(ACCOUNT_TYPE_LABELS), value=account.type.value, label="Tipo"
+        ).props("outlined dense").style("width:100%")
+
+        def _save() -> None:
+            if not name_input.value:
+                ui.notify("Informe um nome para a conta", color="negative")
+                return
+            with get_session() as session2:
+                accounts_service.update_account(
+                    session2,
+                    account.id,
+                    name=name_input.value,
+                    type=AccountType(type_select.value),
+                )
+            dialog.close()
+            on_saved()
+
+        ui.label(
+            f"{tx_count} lancamento(s) vinculado(s) a esta conta."
+            if tx_count
+            else "Nenhum lancamento vinculado."
+        ).style(f"font-size:12px;color:{theme.var('textm')};margin-top:12px")
+
+        ui.label(
+            "Arquivar esconde a conta das telas, mas mantem o historico intacto. "
+            "Excluir remove a conta e todos os lancamentos dela, sem volta."
+        ).style(f"font-size:11px;color:{theme.var('textm')};margin-top:4px")
+
+        confirm_delete = ui.checkbox(
+            f"Confirmo excluir a conta e seus {tx_count} lancamento(s)"
+            if tx_count
+            else "Confirmo excluir esta conta"
+        ).style("margin-top:8px")
+
+        def _archive() -> None:
+            with get_session() as session2:
+                accounts_service.set_archived(session2, account.id, True)
+            dialog.close()
+            on_saved()
+
+        def _delete() -> None:
+            if not confirm_delete.value:
+                ui.notify("Marque a confirmacao antes de excluir", color="negative")
+                return
+            with get_session() as session2:
+                accounts_service.delete_account(session2, account.id, cascade=True)
+            dialog.close()
+            on_saved()
+
+        with ui.row().style(
+            "justify-content:space-between;gap:8px;margin-top:14px;width:100%;flex-wrap:wrap"
+        ):
+            with ui.row().style("gap:8px"):
+                ui.button("Arquivar", icon="inventory_2", on_click=_archive).props(
+                    "flat no-caps dense"
+                ).style(f"color:{theme.var('text2')}")
+                ui.button("Excluir", icon="delete", on_click=_delete).props(
+                    "flat no-caps dense"
+                ).style(f"color:{theme.var('red')}")
+            with ui.row().style("gap:8px"):
+                ui.button("Cancelar", on_click=dialog.close).props("flat no-caps").style(
+                    f"color:{theme.var('text2')}"
+                )
+                ui.button("Salvar", on_click=_save).props("no-caps unelevated").style(
+                    f"background:{theme.var('accent')};color:{theme.var('s1')}"
+                )
     return dialog
 
 
