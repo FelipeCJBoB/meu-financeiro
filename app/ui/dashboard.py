@@ -99,8 +99,17 @@ def render() -> None:
                             f"compromissos {format_brl(available['committed_cents'])}"
                         ),
                         value_color=theme.var("green") if free >= 0 else theme.var("red"),
+                        help_text=(
+                            "Receita recebida + recorrencias de entrada ainda a vencer, menos "
+                            "despesas ja pagas, contas fixas a vencer e o quanto voce precisa "
+                            "guardar este mes para suas metas com prazo."
+                        ),
                     )
-                components.kpi_card("Patrimonio liquido", format_brl(total_net_worth))
+                components.kpi_card(
+                    "Patrimonio liquido",
+                    format_brl(total_net_worth),
+                    help_text="Soma dos saldos calculados de todas as suas contas ativas, agora.",
+                )
                 components.kpi_card(
                     "Fluxo do mes",
                     format_brl(cash_flow),
@@ -108,6 +117,7 @@ def render() -> None:
                     value_color=theme.var("green") if cash_flow >= 0 else theme.var("red"),
                     delta_text=delta_text,
                     delta_color=delta_color,
+                    help_text="Receitas menos despesas ja lancadas neste ciclo (nao inclui recorrencias futuras).",
                 )
                 if pace:
                     over = pace["over_by_cents"]
@@ -120,6 +130,11 @@ def render() -> None:
                             f"{'Acima' if over > 0 else 'Dentro'} do orcamento em {format_brl(abs(over))}"
                         ),
                         delta_color=theme.var("red") if over > 0 else theme.var("green"),
+                        help_text=(
+                            "Projecao linear: gasto ate hoje dividido pelos dias decorridos, "
+                            "multiplicado pelos dias do ciclo. Assume que voce vai continuar "
+                            "gastando no mesmo ritmo ate o fim do mes."
+                        ),
                     )
                 else:
                     components.kpi_card(
@@ -130,12 +145,16 @@ def render() -> None:
                             if summary["budget_cents"]
                             else "Nenhum orcamento definido"
                         ),
+                        help_text="Percentual do total orcado nas categorias que ja foi gasto neste ciclo.",
                     )
 
             with ui.row().style("width:100%;gap:16px;flex-wrap:wrap;align-items:stretch"):
                 with ui.column().style("flex:1.3;min-width:280px;gap:8px"):
                     with components.card():
-                        components.section_label("Patrimonio nos ultimos 6 meses")
+                        components.section_label(
+                            "Patrimonio nos ultimos 6 meses",
+                            help_text="Baseado nos snapshots que voce registra manualmente na tela Patrimonio.",
+                        )
                         ui.plotly(net_worth_figure(height=140)).style("width:100%;height:140px")
 
                 with ui.column().style("flex:1;min-width:240px;gap:8px"):

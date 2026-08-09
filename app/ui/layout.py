@@ -25,7 +25,7 @@ def page_frame(active_path: str):
         f"padding:0;margin:0;gap:0"
     ):
         with ui.row().style(
-            f"width:100%;max-width:1100px;align-items:center;justify-content:space-between;"
+            f"width:100%;max-width:1800px;align-items:center;justify-content:space-between;"
             f"padding:14px 24px;border-bottom:0.5px solid {theme.var('border')};"
             f"box-sizing:border-box;flex-wrap:wrap;gap:8px"
         ):
@@ -65,5 +65,5 @@ def page_frame(active_path: str):
         with ui.column().style(
             "width:100%;align-items:center;padding:20px 24px;box-sizing:border-box"
         ):
-            with ui.column().style("width:100%;max-width:1100px;gap:16px") as content:
+            with ui.column().style("width:100%;max-width:1800px;gap:16px") as content:
                 yield content

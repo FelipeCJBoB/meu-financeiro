@@ -9,6 +9,7 @@ from app.services import budgets as budgets_service
 from app.services import categories as categories_service
 from app.services.money import format_brl, to_cents
 from app.ui import components
+from app.ui.charts import budget_comparison_figure
 from app.ui.layout import page_frame
 
 
@@ -90,7 +91,23 @@ def render() -> None:
                     )
                     ui.label(text).style(f"font-size:13px;color:{theme.var('text')}")
 
+        if summary["budget_cents"]:
+            with components.card():
+                components.section_label(
+                    "Orcado vs. gasto por categoria",
+                    help_text=(
+                        "Barra cinza = quanto voce planejou gastar. Barra colorida = quanto "
+                        "ja gastou (verde dentro do previsto, amarelo perto do limite, "
+                        "vermelho estourado)."
+                    ),
+                )
+                ui.plotly(budget_comparison_figure(month, cycle_start_day)).style("width:100%")
+
         with components.card():
+            components.section_label(
+                "Categorias",
+                help_text="Clique no valor para definir ou editar o orcamento de cada categoria.",
+            )
             if not categories:
                 components.empty_state("Nenhuma categoria de despesa ainda", icon="pie_chart")
             for category in categories:

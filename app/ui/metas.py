@@ -99,7 +99,10 @@ def _goal_card(goal) -> None:
 def render() -> None:
     with page_frame("/metas"):
         with ui.row().style("width:100%;justify-content:space-between;align-items:center"):
-            ui.label("Metas financeiras").style(f"font-size:13px;color:{theme.var('text2')}")
+            components.section_label(
+                "Metas financeiras",
+                help_text="O progresso mostra o que voce ja guardou. Definir um prazo ativa o calculo de aporte mensal necessario, usado no Disponivel para gastar do Dashboard.",
+            )
             dialog = _new_goal_dialog(lambda: ui.navigate.reload())
             ui.button("Nova meta", icon="add", on_click=dialog.open).props(
                 "no-caps unelevated"

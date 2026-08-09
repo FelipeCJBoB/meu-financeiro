@@ -36,6 +36,13 @@ def card(*, padding: str = "1rem", grow: bool = False) -> ui.column:
     return element
 
 
+def info_icon(text: str, *, size: str = "13px") -> None:
+    icon = ui.icon("help_outline").style(
+        f"font-size:{size};color:{theme.var('textm')};cursor:help;margin-left:4px"
+    )
+    icon.tooltip(text)
+
+
 def kpi_card(
     label: str,
     value: str,
@@ -44,9 +51,13 @@ def kpi_card(
     value_color: str | None = None,
     delta_text: str = "",
     delta_color: str | None = None,
+    help_text: str = "",
 ) -> None:
     with card():
-        ui.label(label).style(f"font-size:13px;color:{theme.var('text2')};margin-bottom:4px")
+        with ui.row().style("align-items:center;gap:0;margin-bottom:4px"):
+            ui.label(label).style(f"font-size:13px;color:{theme.var('text2')}")
+            if help_text:
+                info_icon(help_text)
         ui.label(value).style(
             f"font-size:22px;font-weight:500;color:{value_color or theme.var('text')}"
         )
@@ -76,8 +87,11 @@ def category_chip(icon: str, color: str, *, size: str = "28px") -> ui.element:
     return el
 
 
-def section_label(text: str) -> None:
-    ui.label(text).style(f"font-size:13px;color:{theme.var('text2')};margin:4px 0 4px")
+def section_label(text: str, *, help_text: str = "") -> None:
+    with ui.row().style("align-items:center;gap:0;margin:4px 0 4px"):
+        ui.label(text).style(f"font-size:13px;color:{theme.var('text2')}")
+        if help_text:
+            info_icon(help_text)
 
 
 def month_navigator() -> None:

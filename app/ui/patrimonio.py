@@ -10,7 +10,7 @@ from app.services import forecast as forecast_service
 from app.services import networth as networth_service
 from app.services.money import format_brl, to_cents
 from app.ui import components
-from app.ui.charts import forecast_figure, net_worth_figure
+from app.ui.charts import composition_donut_figure, forecast_figure, net_worth_figure
 from app.ui.layout import page_frame
 
 HORIZON_LABELS = {30: "30 dias", 60: "60 dias", 90: "90 dias"}
@@ -124,7 +124,10 @@ def render() -> None:
                 ).style(f"background:{theme.var('accent')};color:{theme.var('s1')}")
 
         with components.card():
-            components.section_label("Evolução do patrimônio líquido")
+            components.section_label(
+                "Evolução do patrimônio líquido",
+                help_text="Um ponto por snapshot registrado. Passe o mouse sobre o grafico para ver o valor exato de cada mes.",
+            )
             ui.plotly(net_worth_figure(height=220, months=12)).style("width:100%;height:220px")
 
         with ui.row().style("width:100%;gap:6px"):
@@ -134,9 +137,23 @@ def render() -> None:
                 ).props("flat dense no-caps").style(f"color:{theme.var('text2')}")
         _forecast_section(30)
 
-        with components.card():
-            components.section_label("Composição atual")
-            if not composition:
-                components.empty_state("Nenhuma conta cadastrada", icon="account_balance_wallet")
-            for row in composition:
-                _account_row(row)
+        with ui.row().style("width:100%;gap:16px;flex-wrap:wrap;align-items:stretch"):
+            positive_accounts = [r for r in composition if r["balance_cents"] > 0]
+            if positive_accounts:
+                with ui.column().style("flex:1;min-width:260px;gap:8px"):
+                    with components.card():
+                        components.section_label(
+                            "Distribuição por conta",
+                            help_text="Proporcao do patrimonio positivo em cada conta. Contas negativas (ex: cartao) nao entram no donut.",
+                        )
+                        ui.plotly(composition_donut_figure(height=220)).style("width:100%")
+
+            with ui.column().style("flex:1.3;min-width:280px;gap:8px"):
+                with components.card():
+                    components.section_label("Composição atual")
+                    if not composition:
+                        components.empty_state(
+                            "Nenhuma conta cadastrada", icon="account_balance_wallet"
+                        )
+                    for row in composition:
+                        _account_row(row)
