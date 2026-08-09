@@ -127,6 +127,7 @@ class Goal(SQLModel, table=True):
     target_date: date | None = None
     linked_account_id: int | None = Field(default=None, foreign_key="accounts.id")
     archived: bool = False
+    created_at: date = Field(default_factory=date.today)
 
 
 class NetWorthSnapshot(SQLModel, table=True):
@@ -143,3 +144,5 @@ class Settings(SQLModel, table=True):
 
     id: int | None = Field(default=1, primary_key=True)
     cycle_start_day: int = 1
+    window_width: int = 2560
+    window_height: int = 1440

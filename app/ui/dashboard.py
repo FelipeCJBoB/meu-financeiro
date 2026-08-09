@@ -20,6 +20,9 @@ def _transaction_row(session, tx) -> None:
         if tx.type == TransactionType.transfer:
             components.category_chip("swap_horiz", theme.current()["accent2"])
             sub = "Transferencia"
+        elif tx.type == TransactionType.adjustment:
+            components.category_chip("tune", theme.current()["textm"])
+            sub = "Ajuste de saldo"
         else:
             category = session.get(Category, tx.category_id) if tx.category_id else None
             components.category_chip(
@@ -35,12 +38,16 @@ def _transaction_row(session, tx) -> None:
             )
 
         if tx.type == TransactionType.income:
-            color, sign = theme.var("green"), "+"
+            color, sign, shown_cents = theme.var("green"), "+", tx.amount_cents
         elif tx.type == TransactionType.transfer:
-            color, sign = theme.var("text2"), ""
+            color, sign, shown_cents = theme.var("text2"), "", tx.amount_cents
+        elif tx.type == TransactionType.adjustment:
+            color = theme.var("green") if tx.amount_cents >= 0 else theme.var("red")
+            sign = "+" if tx.amount_cents >= 0 else "-"
+            shown_cents = abs(tx.amount_cents)
         else:
-            color, sign = theme.var("red"), "-"
-        ui.label(f"{sign}{format_brl(tx.amount_cents)}").style(f"font-size:13px;color:{color}")
+            color, sign, shown_cents = theme.var("red"), "-", tx.amount_cents
+        ui.label(f"{sign}{format_brl(shown_cents)}").style(f"font-size:13px;color:{color}")
 
 
 def render() -> None:

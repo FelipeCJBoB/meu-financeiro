@@ -4,6 +4,7 @@ import os
 
 from nicegui import native, ui
 
+from app import state
 from app.db import init_db
 from app.ui import dashboard, lancamentos, metas, orcamento, patrimonio
 
@@ -44,7 +45,7 @@ def main() -> None:
     ui.run(
         title="Meu financeiro",
         native=native_mode,
-        window_size=(1500, 940) if native_mode else None,
+        window_size=state.window_size() if native_mode else None,
         reload=False,
         show=False,
         port=port,

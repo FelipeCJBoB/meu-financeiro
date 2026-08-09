@@ -76,6 +76,7 @@ def _contribute_dialog(goal_id: int, on_saved) -> ui.dialog:
 
 def _goal_card(goal) -> None:
     pct = goals_service.progress_pct(goal)
+    expected = goals_service.expected_progress_pct(goal)
     with components.card():
         ui.icon(goal.icon).style(f"font-size:20px;color:{theme.var('accent')}")
         ui.label(goal.name).style(
@@ -86,10 +87,15 @@ def _goal_card(goal) -> None:
         if goal.target_date:
             sub += f" · até {goal.target_date.strftime('%m/%Y')}"
         ui.label(sub).style(f"font-size:12px;color:{theme.var('textm')};margin-bottom:10px")
-        components.progress_track(pct, theme.var("accent"))
+        components.progress_track(pct, theme.var("accent"), marker_pct=expected)
         ui.label(f"{pct * 100:.0f}% · faltam {format_brl(remaining)}").style(
             f"font-size:12px;color:{theme.var('text2')};margin-top:6px"
         )
+        if expected is not None:
+            ahead = pct >= expected
+            pace_color = theme.var("green") if ahead else theme.var("amber")
+            pace_text = "No ritmo ou adiantado" if ahead else "Atras do ritmo para o prazo"
+            ui.label(pace_text).style(f"font-size:11px;color:{pace_color};margin-top:2px")
         dialog = _contribute_dialog(goal.id, lambda: ui.navigate.reload())
         ui.button("Registrar aporte", on_click=dialog.open).props(
             "flat dense no-caps"

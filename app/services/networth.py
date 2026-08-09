@@ -5,7 +5,7 @@ from datetime import date
 
 from sqlmodel import Session, select
 
-from app.models import Account, NetWorthSnapshot
+from app.models import NetWorthSnapshot, Transaction, TransactionType
 from app.services.accounts import account_balance_cents, list_accounts
 
 
@@ -40,6 +40,53 @@ def trend(session: Session, *, months: int = 6) -> list[tuple[str, int]]:
         by_month[snap.date.strftime("%Y-%m")] = snap.net_worth_cents
     items = sorted(by_month.items())
     return items[-months:]
+
+
+def _cumulative_breakdown(session: Session, as_of: date) -> tuple[int, int]:
+    """Splits net worth as-of a date into contributed cash vs. gains.
+
+    Contributed = starting balances + income - expenses (real money moved in).
+    Gains = sum of manual balance adjustments (how account_balance_cents already
+    treats investment revaluation), i.e. value change not explained by cash flow.
+    """
+    accounts = list_accounts(session, include_archived=True)
+    contributed = sum(account.initial_balance_cents for account in accounts)
+
+    incomes = session.exec(
+        select(Transaction).where(
+            Transaction.type == TransactionType.income, Transaction.date <= as_of
+        )
+    ).all()
+    expenses = session.exec(
+        select(Transaction).where(
+            Transaction.type == TransactionType.expense, Transaction.date <= as_of
+        )
+    ).all()
+    adjustments = session.exec(
+        select(Transaction).where(
+            Transaction.type == TransactionType.adjustment, Transaction.date <= as_of
+        )
+    ).all()
+
+    contributed += sum(tx.amount_cents for tx in incomes) - sum(tx.amount_cents for tx in expenses)
+    gains = sum(tx.amount_cents for tx in adjustments)
+    return contributed, gains
+
+
+def evolution_breakdown(session: Session, *, months: int = 6) -> list[dict]:
+    snapshots = session.exec(select(NetWorthSnapshot).order_by(NetWorthSnapshot.date)).all()
+    by_month: dict[str, date] = {}
+    for snap in snapshots:
+        by_month[snap.date.strftime("%Y-%m")] = snap.date
+    items = sorted(by_month.items())[-months:]
+
+    rows = []
+    for month_label, as_of in items:
+        contributed_cents, gain_cents = _cumulative_breakdown(session, as_of)
+        rows.append(
+            {"month": month_label, "contributed_cents": contributed_cents, "gain_cents": gain_cents}
+        )
+    return rows
 
 
 def composition(session: Session) -> list[dict]:

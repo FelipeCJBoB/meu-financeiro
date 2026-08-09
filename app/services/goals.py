@@ -19,7 +19,7 @@ def create_goal(
     *,
     name: str,
     target_amount_cents: int,
-    icon: str = "ti-target",
+    icon: str = "flag",
     target_date: date | None = None,
     linked_account_id: int | None = None,
 ) -> Goal:
@@ -51,3 +51,15 @@ def progress_pct(goal: Goal) -> float:
     if goal.target_amount_cents <= 0:
         return 0.0
     return min(1.0, goal.current_amount_cents / goal.target_amount_cents)
+
+
+def expected_progress_pct(goal: Goal, *, as_of: date | None = None) -> float | None:
+    """Where the goal 'should' be today assuming linear pacing from creation to deadline."""
+    if not goal.target_date:
+        return None
+    as_of = as_of or date.today()
+    total_days = (goal.target_date - goal.created_at).days
+    if total_days <= 0:
+        return 1.0
+    elapsed_days = (as_of - goal.created_at).days
+    return max(0.0, min(1.0, elapsed_days / total_days))

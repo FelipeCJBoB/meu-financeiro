@@ -11,34 +11,61 @@ from app.services import forecast, networth
 
 
 def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
+    """Stacked bars: cash contributed vs. gains/losses, with a total line on top."""
     with get_session() as session:
-        points = networth.trend(session, months=months)
+        rows = networth.evolution_breakdown(session, months=months)
     t = theme.current()
 
-    x = [p[0] for p in points]
-    y = [p[1] / 100 for p in points]
+    x = [r["month"] for r in rows]
+    contributed = [r["contributed_cents"] / 100 for r in rows]
+    gains = [r["gain_cents"] / 100 for r in rows]
+    totals = [c + g for c, g in zip(contributed, gains)]
+    gain_colors = [t["accent2"] if g >= 0 else t["red"] for g in gains]
+    show_legend = height >= 180
 
     fig = go.Figure()
     fig.add_trace(
+        go.Bar(
+            x=x,
+            y=contributed,
+            name="Aportado",
+            marker=dict(color=t["accent"]),
+            hovertemplate="Aportado: R$ %{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=x,
+            y=gains,
+            name="Ganho/perda",
+            marker=dict(color=gain_colors),
+            hovertemplate="Ganho/perda: R$ %{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
         go.Scatter(
             x=x,
-            y=y,
+            y=totals,
+            name="Total",
             mode="lines+markers",
-            line=dict(color=t["accent"], width=2),
-            marker=dict(size=5, color=t["accent"]),
-            fill="tozeroy",
-            fillcolor=theme.rgba(t["accent"], 0.15),
-            hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
+            line=dict(color=t["text"], width=1.5),
+            marker=dict(size=4, color=t["text"]),
+            hovertemplate="Total: R$ %{y:,.2f}<extra></extra>",
         )
     )
     fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
+        barmode="relative",
+        margin=dict(l=0, r=0, t=28 if show_legend else 4, b=0),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(showgrid=False, color=t["textm"], type="category"),
-        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        showlegend=False,
+        yaxis=dict(
+            showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=True,
+            zerolinecolor=t["border"],
+        ),
+        showlegend=show_legend,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10, color=t["text2"])),
         font=dict(size=11),
     )
     return fig

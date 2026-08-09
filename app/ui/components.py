@@ -69,13 +69,24 @@ def kpi_card(
             )
 
 
-def progress_track(pct: float, color: str, *, height: str = "6px") -> None:
+def progress_track(
+    pct: float, color: str, *, height: str = "6px", marker_pct: float | None = None
+) -> None:
     with ui.element("div").style(
         f"height:{height};background:{theme.var('border')};border-radius:4px;"
-        f"overflow:hidden;width:100%"
+        f"overflow:visible;width:100%;position:relative"
     ):
         width = max(0.0, min(pct, 1.0)) * 100
-        ui.element("div").style(f"height:100%;width:{width:.1f}%;background:{color}")
+        ui.element("div").style(
+            f"height:100%;width:{width:.1f}%;background:{color};border-radius:4px;overflow:hidden"
+        )
+        if marker_pct is not None:
+            marker_left = max(0.0, min(marker_pct, 1.0)) * 100
+            marker = ui.element("div").style(
+                f"position:absolute;top:-2px;bottom:-2px;left:{marker_left:.1f}%;"
+                f"width:2px;background:{theme.var('text')};border-radius:1px"
+            )
+            marker.tooltip("Onde voce deveria estar hoje, no ritmo linear ate o prazo")
 
 
 def category_chip(icon: str, color: str, *, size: str = "28px") -> ui.element:
@@ -160,6 +171,12 @@ def new_account_dialog(on_created: Callable[[], None]) -> ui.dialog:
     return dialog
 
 
+WINDOW_PRESETS = [
+    ("2K", 2560, 1440),
+    ("Full HD", 1920, 1080),
+]
+
+
 def settings_dialog() -> ui.dialog:
     with ui.dialog() as dialog, card(padding="1.25rem"):
         ui.label("Configuracoes").style(
@@ -174,16 +191,38 @@ def settings_dialog() -> ui.dialog:
             "Dia de inicio do ciclo", value=state.cycle_start_day(), min=1, max=31, format="%.0f"
         ).props("outlined dense").style("width:100%")
 
+        ui.label("Tamanho da janela").style(
+            f"font-size:13px;color:{theme.var('text')};margin-top:16px"
+        )
+        ui.label(
+            "Aplica na hora e vira o tamanho padrao na proxima vez que voce abrir o app."
+        ).style(f"font-size:12px;color:{theme.var('textm')};margin-bottom:8px")
+
+        with ui.row().style("gap:8px;width:100%"):
+            for label, width, height in WINDOW_PRESETS:
+
+                def _apply(width=width, height=height) -> None:
+                    state.set_window_size(width, height)
+                    from nicegui import app as nicegui_app
+
+                    if nicegui_app.native.main_window:
+                        nicegui_app.native.main_window.resize(width, height)
+                    ui.notify(f"Janela ajustada para {width}x{height}")
+
+                ui.button(f"{label} ({width}x{height})", on_click=_apply).props(
+                    "flat no-caps dense"
+                ).style(f"color:{theme.var('text2')};border:0.5px solid {theme.var('border')}")
+
         def _save() -> None:
             state.set_cycle_start_day(int(day_input.value or 1))
             dialog.close()
             ui.navigate.reload()
 
         with ui.row().style("justify-content:flex-end;gap:8px;margin-top:14px;width:100%"):
-            ui.button("Cancelar", on_click=dialog.close).props("flat no-caps").style(
+            ui.button("Fechar", on_click=dialog.close).props("flat no-caps").style(
                 f"color:{theme.var('text2')}"
             )
-            ui.button("Salvar", on_click=_save).props("no-caps unelevated").style(
+            ui.button("Salvar ciclo", on_click=_save).props("no-caps unelevated").style(
                 f"background:{theme.var('accent')};color:{theme.var('s1')}"
             )
     return dialog

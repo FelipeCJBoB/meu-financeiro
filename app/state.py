@@ -58,3 +58,20 @@ def is_current_cycle() -> bool:
 def reset_to_today() -> None:
     _ensure_loaded()
     _state["month"] = month_key_for_date(date.today(), _state["cycle_start_day"])
+
+
+def window_size() -> tuple[int, int]:
+    from app.db import get_session
+    from app.services import settings as settings_service
+
+    with get_session() as session:
+        settings = settings_service.get_settings(session)
+        return settings.window_width, settings.window_height
+
+
+def set_window_size(width: int, height: int) -> None:
+    from app.db import get_session
+    from app.services import settings as settings_service
+
+    with get_session() as session:
+        settings_service.set_window_size(session, width, height)

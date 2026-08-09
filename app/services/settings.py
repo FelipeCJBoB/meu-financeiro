@@ -23,3 +23,13 @@ def set_cycle_start_day(session: Session, day: int) -> Settings:
     session.commit()
     session.refresh(settings)
     return settings
+
+
+def set_window_size(session: Session, width: int, height: int) -> Settings:
+    settings = get_settings(session)
+    settings.window_width = width
+    settings.window_height = height
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings

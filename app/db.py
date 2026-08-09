@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 from pathlib import Path
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models import Category, CategoryKind
@@ -41,8 +42,27 @@ DEFAULT_CATEGORIES: list[tuple[str, str, str, CategoryKind]] = [
 ]
 
 
+MIGRATIONS: list[tuple[str, str, str]] = [
+    ("goals", "created_at", f"TEXT DEFAULT '{date.today().isoformat()}'"),
+    ("settings", "window_width", "INTEGER DEFAULT 2560"),
+    ("settings", "window_height", "INTEGER DEFAULT 1440"),
+]
+
+
+def _run_migrations() -> None:
+    with engine.connect() as conn:
+        for table, column, ddl in MIGRATIONS:
+            existing = {
+                row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))
+            }
+            if column not in existing:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+        conn.commit()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
+    _run_migrations()
     with Session(engine) as session:
         _seed_categories(session)
 
