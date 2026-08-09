@@ -8,7 +8,7 @@ from app import state, theme
 from app.db import get_session
 from app.models import AccountType
 from app.services import accounts as accounts_service
-from app.services.money import format_month_label, to_cents
+from app.services.money import format_brl, format_month_label, to_cents
 
 ACCOUNT_TYPE_LABELS = {
     AccountType.checking.value: "Conta corrente",
@@ -223,6 +223,40 @@ def settings_dialog() -> ui.dialog:
                 f"color:{theme.var('text2')}"
             )
             ui.button("Salvar ciclo", on_click=_save).props("no-caps unelevated").style(
+                f"background:{theme.var('accent')};color:{theme.var('s1')}"
+            )
+    return dialog
+
+
+def confirm_recurring_dialog(rule, on_saved: Callable[[], None]) -> ui.dialog:
+    with ui.dialog() as dialog, card(padding="1.25rem"):
+        ui.label(f"Confirmar: {rule.description}").style(
+            f"font-size:15px;font-weight:500;color:{theme.var('text')}"
+        )
+        ui.label(
+            f"Venceu em {rule.next_due_date.strftime('%d/%m/%Y')}. Ajuste o valor se essa "
+            f"conta veio diferente do cadastrado."
+        ).style(f"font-size:12px;color:{theme.var('textm')};margin:6px 0 10px")
+
+        amount_input = ui.number(
+            "Valor (R$)", value=rule.amount_cents / 100, format="%.2f"
+        ).props("outlined dense").style("width:100%")
+
+        def _save() -> None:
+            from app.services import recurring as recurring_service
+
+            with get_session() as session:
+                recurring_service.confirm_recurring(
+                    session, rule.id, amount_cents=to_cents(amount_input.value or 0)
+                )
+            dialog.close()
+            on_saved()
+
+        with ui.row().style("justify-content:flex-end;gap:8px;margin-top:14px;width:100%"):
+            ui.button("Cancelar", on_click=dialog.close).props("flat no-caps").style(
+                f"color:{theme.var('text2')}"
+            )
+            ui.button("Confirmar", on_click=_save).props("no-caps unelevated").style(
                 f"background:{theme.var('accent')};color:{theme.var('s1')}"
             )
     return dialog

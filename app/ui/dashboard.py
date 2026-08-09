@@ -4,11 +4,11 @@ from nicegui import ui
 
 from app import state, theme
 from app.db import get_session
-from app.models import Category, TransactionType
-from app.services import accounts, budgets, goals, networth, planning, transactions
+from app.models import Account, Category, TransactionType
+from app.services import accounts, budgets, goals, networth, planning, recurring, transactions
 from app.services.money import format_brl, month_bounds, previous_month
 from app.ui import components
-from app.ui.charts import net_worth_figure
+from app.ui.charts import monthly_comparison_figure, net_worth_figure, sankey_figure
 from app.ui.layout import page_frame
 
 
@@ -48,6 +48,92 @@ def _transaction_row(session, tx) -> None:
         else:
             color, sign, shown_cents = theme.var("red"), "-", tx.amount_cents
         ui.label(f"{sign}{format_brl(shown_cents)}").style(f"font-size:13px;color:{color}")
+
+
+def _exception_banner(session, status: dict, on_changed) -> None:
+    """Dark-cockpit style: silent when everything is fine, only shows for real exceptions."""
+    if status["level"] == "ok":
+        return
+
+    t = theme.current()
+    raw = t["red"] if status["level"] == "critical" else t["amber"]
+    accent = theme.var("red") if status["level"] == "critical" else theme.var("amber")
+    icon = "error" if status["level"] == "critical" else "warning"
+
+    with ui.column().style(
+        f"width:100%;border:1px solid {accent};border-radius:12px;padding:1rem 1.25rem;"
+        f"background:{theme.rgba(raw, 0.06)};gap:8px"
+    ):
+        with ui.row().style("align-items:center;gap:8px"):
+            ui.icon(icon).style(f"color:{accent};font-size:18px")
+            ui.label("Precisa da sua atencao").style(
+                f"font-size:14px;font-weight:500;color:{theme.var('text')}"
+            )
+
+        if status["available_negative"]:
+            ui.label("Disponivel para gastar esta negativo neste ciclo.").style(
+                f"font-size:13px;color:{theme.var('text2')}"
+            )
+
+        for rule in status["overdue_rules"]:
+            with ui.row().style(
+                f"width:100%;align-items:center;gap:10px;padding:6px 0;"
+                f"border-top:0.5px solid {theme.var('border')}"
+            ):
+                with ui.column().style("flex:1;gap:0"):
+                    ui.label(f"Vencida: {rule.description}").style(
+                        f"font-size:13px;color:{theme.var('text')}"
+                    )
+                    ui.label(
+                        f"Venceu em {rule.next_due_date.strftime('%d/%m/%Y')} · {format_brl(rule.amount_cents)}"
+                    ).style(f"font-size:11px;color:{theme.var('textm')}")
+                confirm_dialog = components.confirm_recurring_dialog(rule, on_changed)
+                ui.button("Confirmar", on_click=confirm_dialog.open).props(
+                    "dense no-caps unelevated"
+                ).style(f"background:{theme.var('accent')};color:{theme.var('s1')}")
+
+        for row in status["over_budget_categories"]:
+            with ui.row().style(
+                f"width:100%;align-items:center;gap:10px;padding:6px 0;"
+                f"border-top:0.5px solid {theme.var('border')}"
+            ):
+                category = row["category"]
+                ui.label(
+                    f"{category.name} passou do orcamento: {format_brl(row['spent_cents'])} "
+                    f"de {format_brl(row['budget_cents'])}"
+                ).style(f"font-size:13px;color:{theme.var('text2')};flex:1")
+
+
+def _upcoming_payments_section(session) -> None:
+    upcoming = recurring.upcoming_recurring_rules(session, within_days=30)
+    with components.card():
+        components.section_label(
+            "Proximos pagamentos",
+            help_text="Recorrencias ativas com vencimento nos proximos 30 dias, ainda nao vencidas.",
+        )
+        if not upcoming:
+            components.empty_state("Nada agendado nos proximos 30 dias", icon="event_available")
+        for rule in upcoming:
+            account = session.get(Account, rule.account_id)
+            with ui.row().style(
+                f"width:100%;align-items:center;gap:10px;padding:8px 0;"
+                f"border-bottom:0.5px solid {theme.var('border')}"
+            ):
+                components.category_chip(
+                    "arrow_circle_up" if rule.type == TransactionType.income else "event_repeat",
+                    theme.current()["accent"] if rule.type == TransactionType.income else theme.current()["textm"],
+                )
+                with ui.column().style("flex:1;gap:0"):
+                    ui.label(rule.description).style(f"font-size:13px;color:{theme.var('text')}")
+                    account_name = account.name if account else ""
+                    ui.label(
+                        f"em {rule.next_due_date.strftime('%d/%m')} · {account_name}"
+                    ).style(f"font-size:11px;color:{theme.var('textm')}")
+                color = theme.var("green") if rule.type == TransactionType.income else theme.var("text2")
+                sign = "+" if rule.type == TransactionType.income else "-"
+                ui.label(f"{sign}{format_brl(rule.amount_cents)}").style(
+                    f"font-size:13px;color:{color}"
+                )
 
 
 def render() -> None:
@@ -92,12 +178,21 @@ def render() -> None:
 
             pace = budgets.spend_pace(session, month, cycle_start_day)
             available = planning.available_to_spend(session, month, cycle_start_day)
+            allowance = planning.daily_allowance(session, month, cycle_start_day)
+            status = planning.overall_status(session, month, cycle_start_day)
 
             components.month_navigator()
+
+            _exception_banner(session, status, lambda: ui.navigate.reload())
 
             with ui.row().style("width:100%;gap:12px;flex-wrap:wrap"):
                 if available:
                     free = available["available_cents"]
+                    allowance_text = (
+                        f"{format_brl(allowance['per_day_cents'])}/dia nos {allowance['days_remaining']} dias restantes"
+                        if allowance
+                        else ""
+                    )
                     components.kpi_card(
                         "Disponivel para gastar",
                         format_brl(free),
@@ -106,10 +201,12 @@ def render() -> None:
                             f"compromissos {format_brl(available['committed_cents'])}"
                         ),
                         value_color=theme.var("green") if free >= 0 else theme.var("red"),
+                        delta_text=allowance_text,
                         help_text=(
                             "Receita recebida + recorrencias de entrada ainda a vencer, menos "
                             "despesas ja pagas, contas fixas a vencer e o quanto voce precisa "
-                            "guardar este mes para suas metas com prazo."
+                            "guardar este mes para suas metas com prazo. O segundo valor divide "
+                            "isso pelos dias que faltam no ciclo."
                         ),
                     )
                 components.kpi_card(
@@ -156,15 +253,29 @@ def render() -> None:
                     )
 
             with ui.row().style("width:100%;gap:16px;flex-wrap:wrap;align-items:stretch"):
-                with ui.column().style("flex:1.3;min-width:280px;gap:8px"):
+                with ui.column().style("flex:1;min-width:280px;gap:8px"):
                     with components.card():
                         components.section_label(
                             "Patrimonio nos ultimos 6 meses",
                             help_text="Baseado nos snapshots que voce registra manualmente na tela Patrimonio.",
                         )
-                        ui.plotly(net_worth_figure(height=140)).style("width:100%;height:140px")
+                        ui.plotly(net_worth_figure(height=160)).style("width:100%;height:160px")
 
-                with ui.column().style("flex:1;min-width:240px;gap:8px"):
+                with ui.column().style("flex:1;min-width:280px;gap:8px"):
+                    with components.card():
+                        components.section_label(
+                            "Receitas vs. despesas por mes",
+                            help_text="Ultimos 6 ciclos ancorados no mes que voce esta vendo.",
+                        )
+                        ui.plotly(
+                            monthly_comparison_figure(month, cycle_start_day, height=160)
+                        ).style("width:100%;height:160px")
+
+            with ui.row().style("width:100%;gap:16px;flex-wrap:wrap;align-items:stretch"):
+                with ui.column().style("flex:1;min-width:280px;gap:8px"):
+                    _upcoming_payments_section(session)
+
+                with ui.column().style("flex:1;min-width:280px;gap:8px"):
                     with components.card():
                         components.section_label("Metas em andamento")
                         goal_list = goals.list_goals(session)[:2]
@@ -179,6 +290,15 @@ def render() -> None:
                                 ui.label(goal.name).style(f"color:{theme.var('text')}")
                                 ui.label(f"{pct * 100:.0f}%").style(f"color:{theme.var('text2')}")
                             components.progress_track(pct, theme.var("accent"))
+
+            sankey = sankey_figure(month, cycle_start_day, height=260)
+            if sankey is not None:
+                with components.card():
+                    components.section_label(
+                        "Para onde foi o dinheiro este mes",
+                        help_text="Receita ate a conta, e da conta ate despesas, transferencias e sobra.",
+                    )
+                    ui.plotly(sankey).style("width:100%;height:260px")
 
             with components.card():
                 components.section_label("Lancamentos do mes")

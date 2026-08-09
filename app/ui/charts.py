@@ -7,7 +7,9 @@ import plotly.graph_objects as go
 from app import theme
 from app.db import get_session
 from app.services import budgets as budgets_service
-from app.services import forecast, networth
+from app.services import forecast, networth, planning
+from app.services import transactions as transactions_service
+from app.services.money import month_key
 
 
 def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
@@ -71,16 +73,103 @@ def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
     return fig
 
 
+def monthly_comparison_figure(
+    end_month: str, cycle_start_day: int = 1, *, height: int = 180, months: int = 6
+) -> go.Figure:
+    with get_session() as session:
+        rows = transactions_service.monthly_series(
+            session, end_month=end_month, months=months, cycle_start_day=cycle_start_day
+        )
+    t = theme.current()
+
+    x = [r["month"] for r in rows]
+    incomes = [r["income_cents"] / 100 for r in rows]
+    expenses = [r["expense_cents"] / 100 for r in rows]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=x,
+            y=incomes,
+            name="Receitas",
+            marker=dict(color=t["green"]),
+            hovertemplate="Receitas: R$ %{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=x,
+            y=expenses,
+            name="Despesas",
+            marker=dict(color=t["red"]),
+            hovertemplate="Despesas: R$ %{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        barmode="group",
+        margin=dict(l=0, r=0, t=28, b=0),
+        height=height,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
+        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10, color=t["text2"])),
+        font=dict(size=11),
+    )
+    return fig
+
+
+def _daily_expense_std_cents(session) -> float:
+    """Rough day-scaled volatility of monthly expenses, used only to shape an
+    illustrative uncertainty band - not a statistically calibrated confidence
+    interval. Fan charts that claim precise percentiles get misread by lay
+    readers as guarantees, so we deliberately keep this qualitative."""
+    rows = transactions_service.monthly_series(session, end_month=month_key(date.today()), months=6)
+    expenses = [r["expense_cents"] for r in rows if r["expense_cents"] > 0]
+    if len(expenses) < 2:
+        return 0.0
+    mean = sum(expenses) / len(expenses)
+    variance = sum((e - mean) ** 2 for e in expenses) / len(expenses)
+    return (variance ** 0.5) / 30
+
+
 def forecast_figure(*, height: int = 200, horizon_days: int = 90) -> go.Figure:
     with get_session() as session:
         series = forecast.project_net_worth(session, horizon_days=horizon_days)
+        daily_std = _daily_expense_std_cents(session)
     t = theme.current()
     today = date.today()
 
     x = [p[0] for p in series]
-    y = [p[1] / 100 for p in series]
+    y_cents = [p[1] for p in series]
+    y = [c / 100 for c in y_cents]
 
     fig = go.Figure()
+
+    if daily_std > 0:
+        days_ahead = [(p[0] - today).days for p in series]
+        spread = [daily_std * (max(d, 0) ** 0.5) for d in days_ahead]
+        band_wide_hi = [(c + s * 1.6) / 100 for c, s in zip(y_cents, spread)]
+        band_wide_lo = [(c - s * 1.6) / 100 for c, s in zip(y_cents, spread)]
+        band_narrow_hi = [(c + s * 0.7) / 100 for c, s in zip(y_cents, spread)]
+        band_narrow_lo = [(c - s * 0.7) / 100 for c, s in zip(y_cents, spread)]
+
+        fig.add_trace(go.Scatter(x=x, y=band_wide_hi, mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
+        fig.add_trace(
+            go.Scatter(
+                x=x, y=band_wide_lo, mode="lines", line=dict(width=0), fill="tonexty",
+                fillcolor=theme.rgba(t["accent2"], 0.07), hoverinfo="skip", showlegend=False,
+            )
+        )
+        fig.add_trace(go.Scatter(x=x, y=band_narrow_hi, mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
+        fig.add_trace(
+            go.Scatter(
+                x=x, y=band_narrow_lo, mode="lines", line=dict(width=0), fill="tonexty",
+                fillcolor=theme.rgba(t["accent2"], 0.16), hoverinfo="skip", showlegend=False,
+            )
+        )
+
     fig.add_trace(
         go.Scatter(
             x=x,
@@ -189,6 +278,46 @@ def composition_donut_figure(*, height: int = 220) -> go.Figure:
         paper_bgcolor="rgba(0,0,0,0)",
         showlegend=True,
         legend=dict(orientation="v", font=dict(size=11, color=t["text2"])),
+        font=dict(size=11),
+    )
+    return fig
+
+
+def sankey_figure(month: str, cycle_start_day: int = 1, *, height: int = 260) -> go.Figure | None:
+    with get_session() as session:
+        data = planning.sankey_data(session, month, cycle_start_day)
+    if data is None:
+        return None
+    t = theme.current()
+
+    palette = [t["accent"], t["accent2"], t["amber"], t["green"], t["red"], t["textm"]]
+    node_colors = [palette[i % len(palette)] for i in range(len(data["labels"]))]
+    link_colors = [theme.rgba(node_colors[s], 0.35) for s in data["source"]]
+
+    fig = go.Figure(
+        go.Sankey(
+            arrangement="snap",
+            node=dict(
+                label=data["labels"],
+                color=node_colors,
+                pad=16,
+                thickness=14,
+                line=dict(color=t["s1"], width=1),
+            ),
+            link=dict(
+                source=data["source"],
+                target=data["target"],
+                value=data["value"],
+                color=link_colors,
+                hovertemplate="%{source.label} -> %{target.label}: R$ %{value:,.2f}<extra></extra>",
+            ),
+            textfont=dict(color=t["text"], size=12),
+        )
+    )
+    fig.update_layout(
+        margin=dict(l=4, r=4, t=8, b=8),
+        height=height,
+        paper_bgcolor="rgba(0,0,0,0)",
         font=dict(size=11),
     )
     return fig

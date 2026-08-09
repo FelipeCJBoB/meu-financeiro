@@ -319,19 +319,15 @@ def _due_recurring_section(session, on_changed) -> None:
                         f"Vencido em {rule.next_due_date.strftime('%d/%m/%Y')} · {format_brl(rule.amount_cents)}"
                     ).style(f"font-size:11px;color:{theme.var('textm')}")
 
-                def _confirm(rule_id=rule.id) -> None:
-                    with get_session() as s2:
-                        recurring_service.confirm_recurring(s2, rule_id)
-                    on_changed()
-
                 def _skip(rule_id=rule.id) -> None:
                     with get_session() as s2:
                         recurring_service.skip_recurring(s2, rule_id)
                     on_changed()
 
-                ui.button("Confirmar", on_click=_confirm).props("dense no-caps unelevated").style(
-                    f"background:{theme.var('accent')};color:{theme.var('s1')}"
-                )
+                confirm_dialog = components.confirm_recurring_dialog(rule, on_changed)
+                ui.button("Confirmar", on_click=confirm_dialog.open).props(
+                    "dense no-caps unelevated"
+                ).style(f"background:{theme.var('accent')};color:{theme.var('s1')}")
                 ui.button("Pular", on_click=_skip).props("dense no-caps flat").style(
                     f"color:{theme.var('text2')}"
                 )

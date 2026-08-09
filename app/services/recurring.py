@@ -54,6 +54,25 @@ def due_recurring_rules(session: Session, *, as_of: date | None = None) -> list[
     )
 
 
+def upcoming_recurring_rules(
+    session: Session, *, within_days: int = 30, as_of: date | None = None
+) -> list[RecurringRule]:
+    """Active rules due in the future within the window - not yet overdue."""
+    as_of = as_of or date.today()
+    horizon = as_of + timedelta(days=within_days)
+    return list(
+        session.exec(
+            select(RecurringRule)
+            .where(
+                RecurringRule.active == True,  # noqa: E712
+                RecurringRule.next_due_date > as_of,
+                RecurringRule.next_due_date <= horizon,
+            )
+            .order_by(RecurringRule.next_due_date)
+        ).all()
+    )
+
+
 def advance_date(d: date, frequency) -> date:
     value = frequency.value if hasattr(frequency, "value") else frequency
     if value == "weekly":
@@ -63,7 +82,9 @@ def advance_date(d: date, frequency) -> date:
     return add_months(d, 12)
 
 
-def confirm_recurring(session: Session, rule_id: int) -> Transaction:
+def confirm_recurring(
+    session: Session, rule_id: int, *, amount_cents: int | None = None
+) -> Transaction:
     rule = session.get(RecurringRule, rule_id)
     if rule is None:
         raise ValueError(f"Regra recorrente {rule_id} nao encontrada")
@@ -74,7 +95,7 @@ def confirm_recurring(session: Session, rule_id: int) -> Transaction:
         description=rule.description,
         account_id=rule.account_id,
         type_=rule.type,
-        amount_cents=rule.amount_cents,
+        amount_cents=amount_cents if amount_cents is not None else rule.amount_cents,
         category_id=rule.category_id,
         recurring_rule_id=rule.id,
     )

@@ -90,8 +90,9 @@ def _forecast_section(horizon_days: int) -> None:
                 f"font-size:14px;font-weight:500;color:{theme.var('text')}"
             )
         ui.label(
-            "Baseada apenas nas suas recorrências ativas (contas fixas e receitas agendadas) "
-            "somadas ao saldo atual. Nao tenta prever gastos avulsos."
+            "A linha soma suas recorrências ativas ao saldo atual - não tenta prever gastos "
+            "avulsos. A faixa ao redor reflete a variação real das suas despesas nos últimos "
+            "meses (mais larga quanto mais longe no tempo); não é uma garantia estatística."
         ).style(f"font-size:11px;color:{theme.var('textm')};margin-bottom:8px")
         ui.plotly(forecast_figure(height=200, horizon_days=horizon_days)).style(
             "width:100%;height:200px"

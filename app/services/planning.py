@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from app.models import Goal, TransactionType
+from app.models import Account, Category, Goal, Transaction, TransactionSplit, TransactionType
+from app.services.budgets import budget_progress
 from app.services.goals import list_goals
 from app.services.money import month_bounds, month_key, month_key_for_date, months_between
-from app.services.recurring import list_recurring_rules
+from app.services.recurring import due_recurring_rules, list_recurring_rules
 from app.services.transactions import month_totals
 
 
@@ -58,4 +59,123 @@ def available_to_spend(session: Session, month: str, cycle_start_day: int = 1) -
         "goals_need_cents": goals_need_cents,
         "committed_cents": committed_cents,
         "available_cents": income_total_cents - committed_cents,
+    }
+
+
+def daily_allowance(session: Session, month: str, cycle_start_day: int = 1) -> dict | None:
+    """Simplifi-style 'what's left to spend, per day, for the rest of the cycle'."""
+    available = available_to_spend(session, month, cycle_start_day)
+    if available is None:
+        return None
+    today = date.today()
+    _start, end = month_bounds(month, cycle_start_day)
+    days_remaining = max(1, (end - today).days + 1)
+    return {
+        "available_cents": available["available_cents"],
+        "days_remaining": days_remaining,
+        "per_day_cents": round(available["available_cents"] / days_remaining),
+    }
+
+
+def overall_status(session: Session, month: str, cycle_start_day: int = 1) -> dict:
+    """Traffic-light state driven by the worst signal, not an averaged score.
+
+    A composite 0-100 score can hide a real problem behind a good average - a
+    consumer financial-health index (Atlas) deliberately reports three separate
+    scores instead of one for exactly this reason. We surface the worst signal.
+    """
+    overdue = due_recurring_rules(session)
+    over_budget = [row for row in budget_progress(session, month, cycle_start_day) if row["pct"] > 1.0]
+    available = available_to_spend(session, month, cycle_start_day)
+    available_negative = available is not None and available["available_cents"] < 0
+
+    if overdue or available_negative:
+        level = "critical"
+    elif over_budget:
+        level = "warning"
+    else:
+        level = "ok"
+
+    return {
+        "level": level,
+        "overdue_rules": overdue,
+        "over_budget_categories": over_budget,
+        "available_negative": available_negative,
+    }
+
+
+def sankey_data(session: Session, month: str, cycle_start_day: int = 1) -> dict | None:
+    """Money-flow graph for the cycle: income -> account -> expenses/transfers/leftover."""
+    start, end = month_bounds(month, cycle_start_day)
+    txs = session.exec(
+        select(Transaction).where(Transaction.date >= start, Transaction.date <= end)
+    ).all()
+    if not txs:
+        return None
+
+    accounts = {a.id: a for a in session.exec(select(Account)).all()}
+    categories = {c.id: c for c in session.exec(select(Category)).all()}
+
+    labels: list[str] = []
+    label_index: dict[str, int] = {}
+
+    def idx(label: str) -> int:
+        if label not in label_index:
+            label_index[label] = len(labels)
+            labels.append(label)
+        return label_index[label]
+
+    links: dict[tuple[int, int], int] = {}
+
+    def add_link(source_label: str, target_label: str, amount: int) -> None:
+        if amount <= 0:
+            return
+        key = (idx(source_label), idx(target_label))
+        links[key] = links.get(key, 0) + amount
+
+    account_in: dict[int, int] = {}
+    account_out: dict[int, int] = {}
+
+    for tx in txs:
+        account = accounts.get(tx.account_id)
+        account_label = account.name if account else "Conta"
+
+        if tx.type == TransactionType.income:
+            category = categories.get(tx.category_id)
+            add_link(category.name if category else "Receita", account_label, tx.amount_cents)
+            account_in[tx.account_id] = account_in.get(tx.account_id, 0) + tx.amount_cents
+
+        elif tx.type == TransactionType.expense:
+            splits = session.exec(
+                select(TransactionSplit).where(TransactionSplit.transaction_id == tx.id)
+            ).all()
+            allocations = (
+                [(s.category_id, s.amount_cents) for s in splits]
+                if splits
+                else [(tx.category_id, tx.amount_cents)]
+            )
+            for category_id, amount in allocations:
+                category = categories.get(category_id)
+                add_link(account_label, category.name if category else "Outros", amount)
+            account_out[tx.account_id] = account_out.get(tx.account_id, 0) + tx.amount_cents
+
+        elif tx.type == TransactionType.transfer:
+            dest = accounts.get(tx.transfer_account_id)
+            add_link(account_label, dest.name if dest else "Outra conta", tx.amount_cents)
+            account_out[tx.account_id] = account_out.get(tx.account_id, 0) + tx.amount_cents
+
+    for account_id, inflow in account_in.items():
+        leftover = inflow - account_out.get(account_id, 0)
+        if leftover > 0:
+            account = accounts.get(account_id)
+            add_link(account.name if account else "Conta", "Sobra", leftover)
+
+    if not labels:
+        return None
+
+    return {
+        "labels": labels,
+        "source": [key[0] for key in links],
+        "target": [key[1] for key in links],
+        "value": [amount / 100 for amount in links.values()],
     }

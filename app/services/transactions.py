@@ -5,7 +5,7 @@ from datetime import date
 from sqlmodel import Session, select
 
 from app.models import Transaction, TransactionSplit, TransactionType
-from app.services.money import month_bounds
+from app.services.money import month_bounds, previous_month
 
 
 class TransactionError(ValueError):
@@ -128,6 +128,19 @@ def month_totals(session: Session, month: str, cycle_start_day: int = 1) -> dict
         "income_cents": sum(tx.amount_cents for tx in incomes),
         "expense_cents": sum(tx.amount_cents for tx in expenses),
     }
+
+
+def monthly_series(
+    session: Session, *, end_month: str, months: int = 6, cycle_start_day: int = 1
+) -> list[dict]:
+    month_labels = [end_month]
+    for _ in range(months - 1):
+        month_labels.append(previous_month(month_labels[-1]))
+    month_labels.reverse()
+
+    return [
+        {"month": m, **month_totals(session, m, cycle_start_day)} for m in month_labels
+    ]
 
 
 def transaction_splits(session: Session, transaction_id: int) -> list[TransactionSplit]:
