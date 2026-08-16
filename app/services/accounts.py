@@ -40,6 +40,10 @@ def account_balance_cents(session: Session, account_id: int, *, as_of: date | No
     pre-logged for later this month) is future activity that has not left the
     account yet, so it is excluded too, the same way an unconfirmed recurring
     charge does not touch the balance until it is actually paid.
+
+    already_settled overrides both rules by hand: a transaction marked that way
+    never affects the balance, no matter its date, for the cases the anchor
+    cannot infer on its own (no adjustment yet, or one older than this entry).
     """
     if as_of is None:
         as_of = date.today()
@@ -73,7 +77,11 @@ def account_balance_cents(session: Session, account_id: int, *, as_of: date | No
         total = account.initial_balance_cents
         after_anchor = None
 
-    stmt = select(Transaction).where(Transaction.account_id == account_id, Transaction.date <= as_of)
+    stmt = select(Transaction).where(
+        Transaction.account_id == account_id,
+        Transaction.date <= as_of,
+        Transaction.already_settled == False,  # noqa: E712
+    )
     if after_anchor is not None:
         stmt = stmt.where(after_anchor)
     for tx in session.exec(stmt).all():
@@ -90,6 +98,7 @@ def account_balance_cents(session: Session, account_id: int, *, as_of: date | No
         Transaction.transfer_account_id == account_id,
         Transaction.type == TransactionType.transfer,
         Transaction.date <= as_of,
+        Transaction.already_settled == False,  # noqa: E712
     )
     if after_anchor is not None:
         incoming_stmt = incoming_stmt.where(after_anchor)

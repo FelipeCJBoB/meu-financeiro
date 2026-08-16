@@ -100,6 +100,20 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
         date_input.on("change", _check_month_warning)
         _check_month_warning()
 
+        already_settled_checkbox = ui.checkbox(
+            "Ja paga - nao descontar do saldo atual",
+            value=bool(editing and editing.already_settled),
+        )
+        already_settled_checkbox.tooltip(
+            "Para uma despesa antiga que voce ja pagou e que ja esta refletida no "
+            "saldo atual (por exemplo depois de usar Ajustar saldo em Patrimonio). "
+            "Sem isso, lancar aqui descontaria o valor de novo."
+        )
+        already_settled_checkbox.set_visibility(
+            (editing.type if editing else TransactionType(type_select.value))
+            == TransactionType.expense
+        )
+
         account_select = ui.select(
             account_options,
             value=editing.account_id if editing else next(iter(account_options), None),
@@ -250,6 +264,7 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
             is_transfer = e.value == "transfer"
             transfer_select.set_visibility(is_transfer)
             category_block.set_visibility(not is_transfer)
+            already_settled_checkbox.set_visibility(e.value == "expense")
 
         type_select.on_value_change(_on_type_change)
 
@@ -303,6 +318,11 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
                             category_id=category_select.value if type_value != TransactionType.transfer else None,
                             transfer_account_id=transfer_select.value if type_value == TransactionType.transfer else None,
                             splits=splits,
+                            already_settled=(
+                                already_settled_checkbox.value
+                                if type_value == TransactionType.expense
+                                else False
+                            ),
                         )
                         dialog.close()
                         on_saved()
@@ -317,6 +337,11 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
                         amount_cents=total_cents,
                         category_id=category_select.value if type_value != TransactionType.transfer else None,
                         transfer_account_id=transfer_select.value if type_value == TransactionType.transfer else None,
+                        already_settled=(
+                            already_settled_checkbox.value
+                            if type_value == TransactionType.expense
+                            else False
+                        ),
                         splits=splits,
                     )
 
@@ -482,6 +507,8 @@ def _row(session, tx) -> None:
                 category.color if category else theme.current()["textm"],
             )
             sub = category.name if category else "Dividido em categorias"
+            if tx.already_settled:
+                sub += " · ja paga, fora do saldo"
 
         with ui.column().style("flex:1;gap:0"):
             ui.label(tx.description).style(f"font-size:15px;color:{theme.var('text')}")

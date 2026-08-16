@@ -49,6 +49,7 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("goals", "status", "TEXT DEFAULT 'active'"),
     ("settings", "theme_name", "TEXT DEFAULT 'linen'"),
     ("transactions", "balance_after_cents", "INTEGER"),
+    ("transactions", "already_settled", "INTEGER DEFAULT 0"),
 ]
 
 

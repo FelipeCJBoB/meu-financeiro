@@ -27,6 +27,7 @@ def create_transaction(
     notes: str | None = None,
     recurring_rule_id: int | None = None,
     balance_after_cents: int | None = None,
+    already_settled: bool = False,
 ) -> Transaction:
     if type_ == TransactionType.transfer:
         if not transfer_account_id:
@@ -55,6 +56,7 @@ def create_transaction(
         notes=notes,
         recurring_rule_id=recurring_rule_id,
         balance_after_cents=balance_after_cents,
+        already_settled=already_settled,
     )
     session.add(transaction)
     session.commit()
@@ -87,6 +89,7 @@ def update_transaction(
     transfer_account_id: int | None = None,
     splits: list[dict] | None = None,
     notes: str | None = None,
+    already_settled: bool | None = None,
 ) -> Transaction:
     transaction = session.get(Transaction, transaction_id)
     if transaction is None:
@@ -118,6 +121,8 @@ def update_transaction(
     )
     if notes is not None:
         transaction.notes = notes
+    if already_settled is not None:
+        transaction.already_settled = already_settled
     session.add(transaction)
 
     existing_splits = session.exec(

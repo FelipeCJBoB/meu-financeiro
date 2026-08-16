@@ -112,6 +112,12 @@ class Transaction(SQLModel, table=True):
     # keeps storing the delta (what the ledger row displays); this is the anchor
     # account_balance_cents() rebuilds from, instead of re-summing everything.
     balance_after_cents: int | None = Field(default=None)
+    # A backdated entry logged only for categorization/history, whose cash effect
+    # already happened and is already reflected in the tracked balance (typically
+    # via an earlier "Ajustar saldo"). account_balance_cents() skips it entirely,
+    # regardless of date - an explicit override for cases the anchor-vs-date rule
+    # doesn't cover on its own (no adjustment yet, or an older one).
+    already_settled: bool = Field(default=False)
 
 
 class TransactionSplit(SQLModel, table=True):
