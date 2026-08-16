@@ -293,11 +293,6 @@ def render() -> None:
             with components.kpi_grid():
                 if available:
                     free = available["available_cents"]
-                    before_goals = available["available_before_goals_cents"]
-                    # A negative number here is only a real emergency when bills alone
-                    # outrun income. If it only dips negative once goal pacing is
-                    # subtracted, that is a plan the user can adjust, not a red alert.
-                    is_real_shortfall = before_goals < 0
                     allowance_text = (
                         f"{format_brl(allowance['per_day_cents'])}/dia nos {allowance['days_remaining']} dias restantes"
                         if allowance
@@ -308,29 +303,39 @@ def render() -> None:
                         format_brl(free),
                         sub=(
                             f"Receita {format_brl(available['income_total_cents'])} - "
-                            f"compromissos {format_brl(available['bills_cents'])} - "
-                            f"metas {format_brl(available['goals_need_cents'])}"
+                            f"compromissos {format_brl(available['bills_cents'])}"
                         ),
-                        value_color=(
-                            components.money_color(free)
-                            if is_real_shortfall or free >= 0
-                            else theme.var("amber")
-                        ),
-                        glow=(
-                            theme.current()["glow_pos"]
-                            if free >= 0
-                            else theme.current()["glow_neg"] if is_real_shortfall else "none"
-                        ),
+                        value_color=components.money_color(free),
+                        glow=theme.current()["glow_pos" if free >= 0 else "glow_neg"],
                         delta_text=allowance_text,
                         help_text=(
                             "Receita recebida + recorrencias de entrada ainda a vencer, menos "
-                            "despesas ja pagas e contas fixas a vencer (compromissos), menos o "
-                            "quanto voce precisa guardar este mes para suas metas com prazo. "
-                            "Metas nao sao divida: se esse numero ficar negativo so por causa "
-                            "delas, o ritmo da meta e que pode ceder, nao suas contas. O segundo "
-                            "valor divide o total pelos dias que faltam no ciclo."
+                            "despesas ja pagas e contas fixas a vencer neste ciclo. Metas nao "
+                            "entram nessa conta - elas tem card proprio mais abaixo, porque "
+                            "meta e um objetivo que voce escolheu, nao um compromisso como uma "
+                            "conta. O segundo valor divide o total pelos dias que faltam no ciclo."
                         ),
                     )
+                    free_after_goals = free - available["goals_need_cents"]
+                    if available["goals_need_cents"] > 0:
+                        goals_covered = free_after_goals >= 0
+                        components.kpi_card(
+                            "Metas do mes",
+                            format_brl(available["goals_need_cents"]),
+                            sub=f"Livre depois das contas: {format_brl(free)}",
+                            delta_text=(
+                                "Cabe dentro do que sobra depois das contas"
+                                if goals_covered
+                                else f"Faltam {format_brl(abs(free_after_goals))} para cobrir o ritmo deste mes"
+                            ),
+                            delta_color=theme.var("pos") if goals_covered else theme.var("amber"),
+                            help_text=(
+                                "Soma do quanto cada meta com prazo precisa receber este mes para "
+                                "chegar no valor combinado na data combinada. Nao e uma cobranca: "
+                                "se nao couber no que sobra depois das contas, o ritmo da meta e "
+                                "que pode ceder - ajuste o aporte ou o prazo em Metas."
+                            ),
+                        )
                 previous_net_worth = trend_points[0][1] if len(trend_points) > 1 else None
                 if previous_net_worth:
                     nw_delta = total_net_worth - previous_net_worth

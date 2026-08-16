@@ -31,13 +31,14 @@ def goal_monthly_need_cents(goal: Goal, as_of_month: str) -> int:
 
 
 def available_to_spend(session: Session, month: str, cycle_start_day: int = 1) -> dict | None:
-    """Simplifi-style headline number: income - bills - goal pacing.
+    """Simplifi-style headline number: income minus bills, full stop.
 
-    Bills (expenses already paid plus recurring charges still due) and goal pacing
-    are kept as two separate figures, not one blended "committed" total. A bill is
-    an obligation - skipping it has a real consequence (a fee, a cut service). A
-    goal's monthly pace is a target the user set for themselves and can slow down
-    at will; folding it into "compromissos" made a flexible plan read as a debt.
+    Goal pacing used to be subtracted here too, but a goal is a target the user
+    set for themselves, not an obligation - folding it into "how much can I
+    spend" made a flexible plan read as a debt, and made this number swing on
+    something that isn't really about spending money. goals_need_cents is still
+    computed and returned (the Metas card on the dashboard uses it), it just no
+    longer touches available_cents.
 
     Only meaningful for the cycle currently in progress - a closed month has no
     "available to spend" left to decide on.
@@ -63,7 +64,6 @@ def available_to_spend(session: Session, month: str, cycle_start_day: int = 1) -
 
     income_total_cents = totals["income_cents"] + upcoming_income_cents
     bills_cents = totals["expense_cents"] + upcoming_expense_cents
-    committed_cents = bills_cents + goals_need_cents
 
     return {
         "income_total_cents": income_total_cents,
@@ -71,12 +71,7 @@ def available_to_spend(session: Session, month: str, cycle_start_day: int = 1) -
         "upcoming_expense_cents": upcoming_expense_cents,
         "bills_cents": bills_cents,
         "goals_need_cents": goals_need_cents,
-        "committed_cents": committed_cents,
-        "available_cents": income_total_cents - committed_cents,
-        # What is left once real obligations are paid, before setting anything aside
-        # for goals. This is the number that should ever trigger a "you're in
-        # trouble" alert - going negative here means bills outrun income.
-        "available_before_goals_cents": income_total_cents - bills_cents,
+        "available_cents": income_total_cents - bills_cents,
     }
 
 
@@ -109,11 +104,11 @@ def overall_status(session: Session, month: str, cycle_start_day: int = 1) -> di
     overdue = due_recurring_rules(session)
     over_budget = [row for row in budget_progress(session, month, cycle_start_day) if row["pct"] > 1.0]
     available = available_to_spend(session, month, cycle_start_day)
-    available_negative = available is not None and available["available_before_goals_cents"] < 0
+    available_negative = available is not None and available["available_cents"] < 0
     goals_behind = (
         available is not None
         and not available_negative
-        and available["available_cents"] < 0
+        and available["goals_need_cents"] > available["available_cents"]
     )
 
     if overdue or available_negative:
