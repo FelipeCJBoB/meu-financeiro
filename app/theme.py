@@ -203,6 +203,18 @@ def inject_head() -> None:
          some code paths; belt and braces, since a floating edit toolbar is the
          single element that most reads "ferramenta de BI" instead of "produto". */
       .js-plotly-plot .modebar {{ display: none !important; }}
+      /* One row shape for every list in the app (transactions, accounts,
+         upcoming payments) - see components.data_row. The highlight bleeds
+         into the row's own negative margin, so it reads as part of the card's
+         surface instead of a rectangle floating inside it. */
+      .data-row {{ transition: background var(--motion-in); border-radius: {design.radius("sm")}; }}
+      .data-row:hover {{ background: var(--app-s2); }}
+      .data-row-clickable {{ cursor: pointer; }}
+      /* Same idea for a clickable card or hero number: drill-down affordance
+         reads as "this responds to you", not just a static figure. */
+      .hoverable {{ transition: background var(--motion-in), transform var(--motion-out); }}
+      .hoverable:hover {{ background: var(--app-s2); }}
+      .hoverable:active {{ transform: scale(0.99); }}
       @media (prefers-reduced-motion: reduce) {{
         *, *::before, *::after {{
           animation-duration: 0.01ms !important;

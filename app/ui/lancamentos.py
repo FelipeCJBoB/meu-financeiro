@@ -490,50 +490,44 @@ def render() -> None:
 def _row(session, tx) -> None:
     from app.models import Category
 
-    with ui.row().style(
-        f"width:100%;align-items:center;gap:10px;padding:9px 0;"
-        f"border-bottom:0.5px solid {theme.var('border')}"
-    ):
-        if tx.type == TransactionType.transfer:
-            components.category_chip("swap_horiz", theme.current()["accent2"])
-            sub = "Transferência"
-        elif tx.type == TransactionType.adjustment:
-            components.category_chip("tune", theme.current()["textm"])
-            sub = "Ajuste de saldo"
-        else:
-            category = session.get(Category, tx.category_id) if tx.category_id else None
-            components.category_chip(
-                category.icon if category else "receipt_long",
-                theme.category_color(category) if category else theme.current()["textm"],
-            )
-            sub = category.name if category else "Dividido em categorias"
-            if tx.already_settled:
-                sub += " · ja paga, fora do saldo"
+    if tx.type == TransactionType.transfer:
+        icon, icon_color, sub = "swap_horiz", theme.current()["accent2"], "Transferência"
+    elif tx.type == TransactionType.adjustment:
+        icon, icon_color, sub = "tune", theme.current()["textm"], "Ajuste de saldo"
+    else:
+        category = session.get(Category, tx.category_id) if tx.category_id else None
+        icon = category.icon if category else "receipt_long"
+        icon_color = theme.category_color(category) if category else theme.current()["textm"]
+        sub = category.name if category else "Dividido em categorias"
+        if tx.already_settled:
+            sub += " · ja paga, fora do saldo"
 
-        with ui.column().style("flex:1;gap:0"):
-            ui.label(tx.description).style(f"font-size:15px;color:{theme.var('text')}")
-            ui.label(f"{tx.date.strftime('%d/%m/%Y')} · {sub}").style(
-                f"font-size:13px;color:{theme.var('textm')}"
-            )
+    if tx.type == TransactionType.income:
+        color, sign, shown_cents = theme.var("green"), "+", tx.amount_cents
+    elif tx.type == TransactionType.transfer:
+        color, sign, shown_cents = theme.var("text2"), "", tx.amount_cents
+    elif tx.type == TransactionType.adjustment:
+        color = theme.var("green") if tx.amount_cents >= 0 else theme.var("red")
+        sign = "+" if tx.amount_cents >= 0 else "-"
+        shown_cents = abs(tx.amount_cents)
+    else:
+        color, sign, shown_cents = theme.var("red"), "-", tx.amount_cents
 
-        if tx.type == TransactionType.income:
-            color, sign, shown_cents = theme.var("green"), "+", tx.amount_cents
-        elif tx.type == TransactionType.transfer:
-            color, sign, shown_cents = theme.var("text2"), "", tx.amount_cents
-        elif tx.type == TransactionType.adjustment:
-            color = theme.var("green") if tx.amount_cents >= 0 else theme.var("red")
-            sign = "+" if tx.amount_cents >= 0 else "-"
-            shown_cents = abs(tx.amount_cents)
-        else:
-            color, sign, shown_cents = theme.var("red"), "-", tx.amount_cents
-        ui.label(f"{sign}{format_brl(shown_cents)}").style(f"font-size:15px;color:{color}")
-
+    def _trailing() -> None:
         if tx.type == TransactionType.adjustment:
             ui.element("div").style("width:32px")
         else:
-            edit_dialog = _new_transaction_dialog(
-                lambda: ui.navigate.reload(), editing=tx
-            )
+            edit_dialog = _new_transaction_dialog(lambda: ui.navigate.reload(), editing=tx)
             ui.button(icon="edit", on_click=edit_dialog.open).props(
                 "flat dense round"
             ).style(f"color:{theme.var('textm')}").tooltip("Editar ou excluir")
+
+    components.data_row(
+        icon=icon,
+        icon_color=icon_color,
+        title=tx.description,
+        subtitle=f"{tx.date.strftime('%d/%m/%Y')} · {sub}",
+        trailing_text=f"{sign}{format_brl(shown_cents)}",
+        trailing_color=color,
+        trailing_slot=_trailing,
+    )

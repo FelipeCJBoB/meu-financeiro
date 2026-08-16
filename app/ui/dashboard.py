@@ -26,41 +26,35 @@ from app.ui.layout import page_frame
 
 
 def _transaction_row(session, tx) -> None:
-    with ui.row().style(
-        f"width:100%;align-items:center;gap:10px;padding:8px 0;"
-        f"border-bottom:0.5px solid {theme.var('border')}"
-    ):
-        if tx.type == TransactionType.transfer:
-            components.category_chip("swap_horiz", theme.current()["accent2"])
-            sub = "Transferencia"
-        elif tx.type == TransactionType.adjustment:
-            components.category_chip("tune", theme.current()["textm"])
-            sub = "Ajuste de saldo"
-        else:
-            category = session.get(Category, tx.category_id) if tx.category_id else None
-            components.category_chip(
-                category.icon if category else "receipt_long",
-                theme.category_color(category) if category else theme.current()["textm"],
-            )
-            sub = category.name if category else "Sem categoria"
+    if tx.type == TransactionType.transfer:
+        icon, icon_color, sub = "swap_horiz", theme.current()["accent2"], "Transferencia"
+    elif tx.type == TransactionType.adjustment:
+        icon, icon_color, sub = "tune", theme.current()["textm"], "Ajuste de saldo"
+    else:
+        category = session.get(Category, tx.category_id) if tx.category_id else None
+        icon = category.icon if category else "receipt_long"
+        icon_color = theme.category_color(category) if category else theme.current()["textm"]
+        sub = category.name if category else "Sem categoria"
 
-        with ui.column().style("flex:1;gap:0"):
-            ui.label(tx.description).style(f"font-size:15px;color:{theme.var('text')}")
-            ui.label(f"{tx.date.strftime('%d/%m')} · {sub}").style(
-                f"font-size:13px;color:{theme.var('textm')}"
-            )
+    if tx.type == TransactionType.income:
+        color, sign, shown_cents = theme.var("green"), "+", tx.amount_cents
+    elif tx.type == TransactionType.transfer:
+        color, sign, shown_cents = theme.var("text2"), "", tx.amount_cents
+    elif tx.type == TransactionType.adjustment:
+        color = theme.var("green") if tx.amount_cents >= 0 else theme.var("red")
+        sign = "+" if tx.amount_cents >= 0 else "-"
+        shown_cents = abs(tx.amount_cents)
+    else:
+        color, sign, shown_cents = theme.var("red"), "-", tx.amount_cents
 
-        if tx.type == TransactionType.income:
-            color, sign, shown_cents = theme.var("green"), "+", tx.amount_cents
-        elif tx.type == TransactionType.transfer:
-            color, sign, shown_cents = theme.var("text2"), "", tx.amount_cents
-        elif tx.type == TransactionType.adjustment:
-            color = theme.var("green") if tx.amount_cents >= 0 else theme.var("red")
-            sign = "+" if tx.amount_cents >= 0 else "-"
-            shown_cents = abs(tx.amount_cents)
-        else:
-            color, sign, shown_cents = theme.var("red"), "-", tx.amount_cents
-        ui.label(f"{sign}{format_brl(shown_cents)}").style(f"font-size:15px;color:{color}")
+    components.data_row(
+        icon=icon,
+        icon_color=icon_color,
+        title=tx.description,
+        subtitle=f"{tx.date.strftime('%d/%m')} · {sub}",
+        trailing_text=f"{sign}{format_brl(shown_cents)}",
+        trailing_color=color,
+    )
 
 
 def _exception_banner(session, status: dict, on_changed) -> None:
@@ -136,25 +130,16 @@ def _upcoming_payments_section(session) -> None:
             components.empty_state("Nada agendado nos proximos 30 dias", icon="event_available")
         for rule in upcoming:
             account = session.get(Account, rule.account_id)
-            with ui.row().style(
-                f"width:100%;align-items:center;gap:10px;padding:8px 0;"
-                f"border-bottom:0.5px solid {theme.var('border')}"
-            ):
-                components.category_chip(
-                    "arrow_circle_up" if rule.type == TransactionType.income else "event_repeat",
-                    theme.current()["accent"] if rule.type == TransactionType.income else theme.current()["textm"],
-                )
-                with ui.column().style("flex:1;gap:0"):
-                    ui.label(rule.description).style(f"font-size:15px;color:{theme.var('text')}")
-                    account_name = account.name if account else ""
-                    ui.label(
-                        f"em {rule.next_due_date.strftime('%d/%m')} · {account_name}"
-                    ).style(f"font-size:13px;color:{theme.var('textm')}")
-                color = theme.var("green") if rule.type == TransactionType.income else theme.var("text2")
-                sign = "+" if rule.type == TransactionType.income else "-"
-                ui.label(f"{sign}{format_brl(rule.amount_cents)}").style(
-                    f"font-size:15px;color:{color}"
-                )
+            is_income = rule.type == TransactionType.income
+            account_name = account.name if account else ""
+            components.data_row(
+                icon="arrow_circle_up" if is_income else "event_repeat",
+                icon_color=theme.current()["accent"] if is_income else theme.current()["textm"],
+                title=rule.description,
+                subtitle=f"em {rule.next_due_date.strftime('%d/%m')} · {account_name}",
+                trailing_text=f"{'+' if is_income else '-'}{format_brl(rule.amount_cents)}",
+                trailing_color=theme.var("green") if is_income else theme.var("text2"),
+            )
 
 
 def render() -> None:

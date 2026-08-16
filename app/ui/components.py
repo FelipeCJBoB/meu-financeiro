@@ -109,6 +109,7 @@ def kpi_card(
                 f"color:{delta_color or theme.var('textm')};margin-top:3px"
             )
     if on_click:
+        element.classes("hoverable")
         element.style("cursor:pointer")
         element.on("click", on_click)
     return element
@@ -155,10 +156,15 @@ def hero_metric(
     """T1-tier: the one number the whole screen exists to answer. Unboxed, at
     roughly 1.6x a KPI card's size, sitting directly on the page background so
     it reads as the headline rather than one card among equals."""
-    with ui.row().style(
-        "width:100%;justify-content:space-between;align-items:flex-end;"
-        "gap:16px;flex-wrap:wrap" + (";cursor:pointer" if on_click else "")
-    ) as wrapper:
+    bleed = int(design.space(3).rstrip("px"))
+    wrapper_style = (
+        "width:calc(100% + {b}px * 2);justify-content:space-between;align-items:flex-end;"
+        "gap:16px;flex-wrap:wrap;padding:{b}px;margin:-{b}px;box-sizing:border-box;"
+        "border-radius:{r}".format(b=bleed, r=design.radius("md"))
+    )
+    if on_click:
+        wrapper_style += ";cursor:pointer"
+    with ui.row().classes("hoverable" if on_click else "").style(wrapper_style) as wrapper:
         with ui.column().style("gap:2px;min-width:0"):
             with ui.row().style("align-items:center;gap:0"):
                 ui.label(label).style(
@@ -240,6 +246,53 @@ def category_chip(icon: str, color: str, *, size: str = "28px") -> ui.element:
         f"justify-content:center;font-size:14px"
     )
     return el
+
+
+def data_row(
+    *,
+    icon: str | None = None,
+    icon_color: str | None = None,
+    title: str,
+    subtitle: str = "",
+    trailing_text: str = "",
+    trailing_color: str | None = None,
+    trailing_slot: Callable[[], None] | None = None,
+    on_click: Callable[[], None] | None = None,
+) -> ui.row:
+    """One list row - the shared building block behind every list in the app:
+    transactions, accounts, upcoming payments. A grid-lined <table> reads as a
+    spreadsheet; icon plus two-line text plus a trailing value reads as a
+    product list. That is the whole gap the client's document pointed at
+    ("tabelas com aparencia de aplicacao, nao de planilha") - one row shape,
+    reused everywhere, instead of four near-identical copies drifting apart.
+
+    The row bleeds slightly past its own bounds into the card's padding on
+    hover, so the highlight reads as part of one continuous surface rather
+    than a rectangle floating inside another - the same trick a sidebar or a
+    mail app uses for its list items."""
+    bleed = int(design.space(3).rstrip("px"))
+    classes = "data-row" + (" data-row-clickable" if on_click else "")
+    element = ui.row().classes(classes).style(
+        f"width:calc(100% + {bleed * 2}px);align-items:center;gap:10px;"
+        f"padding:9px {bleed}px;margin:0 -{bleed}px;box-sizing:border-box;"
+        f"border-bottom:0.5px solid {theme.var('border')}"
+    )
+    with element:
+        if icon:
+            category_chip(icon, icon_color or theme.var("textm"))
+        with ui.column().style("flex:1;gap:0;min-width:0"):
+            ui.label(title).style(f"font-size:15px;color:{theme.var('text')}")
+            if subtitle:
+                ui.label(subtitle).style(f"font-size:13px;color:{theme.var('textm')}")
+        if trailing_text:
+            ui.label(trailing_text).classes("money").style(
+                f"font-size:15px;color:{trailing_color or theme.var('text')}"
+            )
+        if trailing_slot:
+            trailing_slot()
+    if on_click:
+        element.on("click", on_click)
+    return element
 
 
 def section_label(text: str, *, help_text: str = "") -> None:

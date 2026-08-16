@@ -71,18 +71,8 @@ def _adjust_balance_dialog(account, on_saved) -> ui.dialog:
 
 def _account_row(row) -> None:
     account = row["account"]
-    with ui.row().style(
-        f"width:100%;align-items:center;gap:10px;padding:9px 0;"
-        f"border-bottom:0.5px solid {theme.var('border')}"
-    ):
-        components.category_chip(
-            ACCOUNT_TYPE_ICON.get(account.type, "folder"), theme.current()["accent"]
-        )
-        with ui.column().style("flex:1;gap:0"):
-            ui.label(account.name).style(f"font-size:15px;color:{theme.var('text')}")
-            ui.label(ACCOUNT_TYPE_LABELS.get(account.type, "")).style(
-                f"font-size:13px;color:{theme.var('textm')}"
-            )
+
+    def _trailing() -> None:
         ui.label(format_brl(row["balance_cents"])).style(
             f"font-size:15px;color:{theme.var('text')};margin-right:8px"
         )
@@ -94,6 +84,14 @@ def _account_row(row) -> None:
         ui.button(icon="settings", on_click=manage.open).props("flat dense round").style(
             f"color:{theme.var('text2')}"
         ).tooltip("Renomear, arquivar ou excluir")
+
+    components.data_row(
+        icon=ACCOUNT_TYPE_ICON.get(account.type, "folder"),
+        icon_color=theme.current()["accent"],
+        title=account.name,
+        subtitle=ACCOUNT_TYPE_LABELS.get(account.type, ""),
+        trailing_slot=_trailing,
+    )
 
 
 @ui.refreshable
