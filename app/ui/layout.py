@@ -71,7 +71,7 @@ def page_frame(active_path: str):
             ui.icon("account_balance_wallet").style(
                 f"color:{theme.var('accent')};font-size:24px;min-width:24px"
             )
-            ui.label("Meu financeiro").classes("label").style(
+            ui.label("CJ BOB Bank").classes("label").style(
                 f"color:{theme.var('text')};font-weight:600"
             )
 

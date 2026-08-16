@@ -1,4 +1,4 @@
-# Meu financeiro
+# CJ BOB Bank
 
 Controle financeiro pessoal, desktop, com os dados 100% na sua máquina — sem nuvem, sem assinatura, sem conta de terceiro guardando seu extrato.
 
@@ -63,7 +63,7 @@ python -m app.main
 .\build.ps1
 ```
 
-Gera `dist\MeuFinanceiro.exe` — um único arquivo, sem instalador, sem exigir Python na máquina de destino.
+Gera `dist\CJ BOB Bank.exe` — um único arquivo, sem instalador, sem exigir Python na máquina de destino.
 
 ## Estrutura do projeto
 

@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 build/
 dist/
-*.spec
 *.db
 *.db-wal
 *.db-shm

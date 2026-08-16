@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 from nicegui import native, ui
 
 from app import state
 from app.db import init_db
 from app.ui import dashboard, lancamentos, metas, orcamento, patrimonio, perfil
+
+
+def _icon_path() -> Path:
+    # PyInstaller onefile extracts bundled data under sys._MEIPASS at runtime,
+    # preserving the "app/assets/..." prefix from the spec's datas entry;
+    # outside a frozen build (plain `python run.py`) that same relative path
+    # exists starting from the project root, one level above this file.
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent))
+    return base / "app" / "assets" / "icon.ico"
 
 
 @ui.page("/")
@@ -60,8 +71,10 @@ def main() -> None:
         if native_mode
         else int(os.getenv("MEUFINANCEIRO_PORT", "8420"))
     )
+    icon_path = _icon_path()
     ui.run(
-        title="Meu financeiro",
+        title="CJ BOB Bank",
+        favicon=icon_path if icon_path.exists() else None,
         native=native_mode,
         window_size=state.window_size() if native_mode else None,
         reload=False,

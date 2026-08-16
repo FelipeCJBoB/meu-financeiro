@@ -1,2 +1,2 @@
-.venv\Scripts\pyinstaller.exe --name MeuFinanceiro --noconfirm --windowed --onefile --add-data ".venv\lib\site-packages\nicegui;nicegui" run.py
-Write-Host "Executavel gerado em dist\MeuFinanceiro.exe"
+.venv\Scripts\pyinstaller.exe --noconfirm "CJ_BOB_Bank.spec"
+Write-Host "Executavel gerado em dist\CJ BOB Bank.exe"
