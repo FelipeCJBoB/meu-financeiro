@@ -31,7 +31,13 @@ def goal_monthly_need_cents(goal: Goal, as_of_month: str) -> int:
 
 
 def available_to_spend(session: Session, month: str, cycle_start_day: int = 1) -> dict | None:
-    """Simplifi-style headline number: income - committed bills - goal pacing.
+    """Simplifi-style headline number: income - bills - goal pacing.
+
+    Bills (expenses already paid plus recurring charges still due) and goal pacing
+    are kept as two separate figures, not one blended "committed" total. A bill is
+    an obligation - skipping it has a real consequence (a fee, a cut service). A
+    goal's monthly pace is a target the user set for themselves and can slow down
+    at will; folding it into "compromissos" made a flexible plan read as a debt.
 
     Only meaningful for the cycle currently in progress - a closed month has no
     "available to spend" left to decide on.
@@ -56,15 +62,21 @@ def available_to_spend(session: Session, month: str, cycle_start_day: int = 1) -
     goals_need_cents = sum(goal_monthly_need_cents(g, month) for g in list_goals(session))
 
     income_total_cents = totals["income_cents"] + upcoming_income_cents
-    committed_cents = totals["expense_cents"] + upcoming_expense_cents + goals_need_cents
+    bills_cents = totals["expense_cents"] + upcoming_expense_cents
+    committed_cents = bills_cents + goals_need_cents
 
     return {
         "income_total_cents": income_total_cents,
         "spent_cents": totals["expense_cents"],
         "upcoming_expense_cents": upcoming_expense_cents,
+        "bills_cents": bills_cents,
         "goals_need_cents": goals_need_cents,
         "committed_cents": committed_cents,
         "available_cents": income_total_cents - committed_cents,
+        # What is left once real obligations are paid, before setting anything aside
+        # for goals. This is the number that should ever trigger a "you're in
+        # trouble" alert - going negative here means bills outrun income.
+        "available_before_goals_cents": income_total_cents - bills_cents,
     }
 
 
@@ -89,15 +101,24 @@ def overall_status(session: Session, month: str, cycle_start_day: int = 1) -> di
     A composite 0-100 score can hide a real problem behind a good average - a
     consumer financial-health index (Atlas) deliberately reports three separate
     scores instead of one for exactly this reason. We surface the worst signal.
+
+    A goal running behind pace is never the worst signal on its own: it is a
+    choice the user made for themselves, not a bill collector. Only bills
+    outrunning income - a real, non-negotiable shortfall - escalates to critical.
     """
     overdue = due_recurring_rules(session)
     over_budget = [row for row in budget_progress(session, month, cycle_start_day) if row["pct"] > 1.0]
     available = available_to_spend(session, month, cycle_start_day)
-    available_negative = available is not None and available["available_cents"] < 0
+    available_negative = available is not None and available["available_before_goals_cents"] < 0
+    goals_behind = (
+        available is not None
+        and not available_negative
+        and available["available_cents"] < 0
+    )
 
     if overdue or available_negative:
         level = "critical"
-    elif over_budget:
+    elif over_budget or goals_behind:
         level = "warning"
     else:
         level = "ok"
@@ -107,6 +128,7 @@ def overall_status(session: Session, month: str, cycle_start_day: int = 1) -> di
         "overdue_rules": overdue,
         "over_budget_categories": over_budget,
         "available_negative": available_negative,
+        "goals_behind": goals_behind,
     }
 
 

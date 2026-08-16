@@ -126,6 +126,59 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
                 label="Categoria",
             ).props("outlined dense").style("width:100%")
 
+            # Sits right under the select, not after the split UI - the split
+            # dropdown's own open overlay used to cover this button entirely,
+            # so users who wanted a category that didn't exist yet could not
+            # find where to add one.
+            new_cat_visible = {"value": False}
+            new_cat_row = ui.column().style("width:100%;gap:6px")
+            new_cat_row.set_visibility(False)
+            with new_cat_row:
+                new_cat_name = ui.input("Nome da nova categoria").props(
+                    "outlined dense"
+                ).style("width:100%")
+                with ui.row().style("width:100%;gap:6px"):
+                    new_cat_icon = ui.select(
+                        dict(CATEGORY_ICON_OPTIONS), value="sell", label="Icone"
+                    ).props("outlined dense").style("flex:1")
+                    new_cat_kind = ui.select(
+                        {"expense": "Despesa", "income": "Receita", "both": "Ambos"},
+                        value="expense",
+                        label="Tipo",
+                    ).props("outlined dense").style("flex:1")
+                new_cat_color = ui.color_input(value="#8ab4e8", label="Cor").props(
+                    "outlined dense"
+                ).style("width:100%")
+
+                def _save_category() -> None:
+                    if not new_cat_name.value:
+                        ui.notify("Informe um nome", color="negative")
+                        return
+                    with get_session() as s2:
+                        category = categories_service.get_or_create_category(
+                            s2,
+                            name=new_cat_name.value,
+                            icon=new_cat_icon.value,
+                            color=new_cat_color.value,
+                            kind=CategoryKind(new_cat_kind.value),
+                        )
+                    category_options[category.id] = category.name
+                    category_select.set_options(dict(category_options), value=category.id)
+                    new_cat_row.set_visibility(False)
+                    new_cat_name.value = ""
+
+                ui.button("Salvar categoria", on_click=_save_category).props(
+                    "unelevated no-caps dense"
+                ).style(f"background:{theme.var('accent')};color:{theme.var('s1')}")
+
+            def _toggle_new_cat() -> None:
+                new_cat_visible["value"] = not new_cat_visible["value"]
+                new_cat_row.set_visibility(new_cat_visible["value"])
+
+            ui.button("Criar categoria", icon="add", on_click=_toggle_new_cat).props(
+                "flat dense no-caps"
+            ).style(f"color:{theme.var('accent2')};font-size:14px;align-self:flex-start")
+
             split_checkbox = ui.checkbox(
                 "Dividir em mais de uma categoria", value=bool(existing_splits)
             )
@@ -172,55 +225,6 @@ def _new_transaction_dialog(on_saved, *, editing=None) -> ui.dialog:
                 ).bind_visibility_from(split_checkbox, "value").style(
                     f"color:{theme.var('accent2')};font-size:14px"
                 )
-
-            new_cat_visible = {"value": False}
-            new_cat_row = ui.column().style("width:100%;gap:6px")
-            new_cat_row.set_visibility(False)
-            with new_cat_row:
-                new_cat_name = ui.input("Nome da nova categoria").props(
-                    "outlined dense"
-                ).style("width:100%")
-                with ui.row().style("width:100%;gap:6px"):
-                    new_cat_icon = ui.select(
-                        dict(CATEGORY_ICON_OPTIONS), value="sell", label="Icone"
-                    ).props("outlined dense").style("flex:1")
-                    new_cat_kind = ui.select(
-                        {"expense": "Despesa", "income": "Receita", "both": "Ambos"},
-                        value="expense",
-                        label="Tipo",
-                    ).props("outlined dense").style("flex:1")
-                new_cat_color = ui.color_input(value="#8ab4e8", label="Cor").props(
-                    "outlined dense"
-                ).style("width:100%")
-
-                def _save_category() -> None:
-                    if not new_cat_name.value:
-                        ui.notify("Informe um nome", color="negative")
-                        return
-                    with get_session() as s2:
-                        category = categories_service.get_or_create_category(
-                            s2,
-                            name=new_cat_name.value,
-                            icon=new_cat_icon.value,
-                            color=new_cat_color.value,
-                            kind=CategoryKind(new_cat_kind.value),
-                        )
-                    category_options[category.id] = category.name
-                    category_select.set_options(dict(category_options), value=category.id)
-                    new_cat_row.set_visibility(False)
-                    new_cat_name.value = ""
-
-                ui.button("Salvar categoria", on_click=_save_category).props(
-                    "unelevated no-caps dense"
-                ).style(f"background:{theme.var('accent')};color:{theme.var('s1')}")
-
-            def _toggle_new_cat() -> None:
-                new_cat_visible["value"] = not new_cat_visible["value"]
-                new_cat_row.set_visibility(new_cat_visible["value"])
-
-            ui.button("+ Criar categoria", on_click=_toggle_new_cat).props(
-                "flat dense no-caps"
-            ).style(f"color:{theme.var('accent2')};font-size:14px;align-self:flex-start")
 
         amount_input = ui.number(
             "Valor total (R$)",

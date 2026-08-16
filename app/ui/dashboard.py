@@ -86,9 +86,17 @@ def _exception_banner(session, status: dict, on_changed) -> None:
             )
 
         if status["available_negative"]:
-            ui.label("Disponivel para gastar esta negativo neste ciclo.").style(
-                f"font-size:15px;color:{theme.var('text2')}"
-            )
+            ui.label(
+                "As contas deste ciclo somam mais do que a receita - isso e um "
+                "compromisso real, nao da para simplesmente adiar."
+            ).style(f"font-size:15px;color:{theme.var('text2')}")
+
+        if status.get("goals_behind"):
+            ui.label(
+                "O ritmo das suas metas pede mais do que sobra depois das contas "
+                "este mes. A meta e sua, nao uma divida - reduzir o aporte ou "
+                "empurrar o prazo em Metas resolve, sem problema nenhum."
+            ).style(f"font-size:15px;color:{theme.var('text2')}")
 
         for rule in status["overdue_rules"]:
             with ui.row().style(
@@ -285,6 +293,11 @@ def render() -> None:
             with components.kpi_grid():
                 if available:
                     free = available["available_cents"]
+                    before_goals = available["available_before_goals_cents"]
+                    # A negative number here is only a real emergency when bills alone
+                    # outrun income. If it only dips negative once goal pacing is
+                    # subtracted, that is a plan the user can adjust, not a red alert.
+                    is_real_shortfall = before_goals < 0
                     allowance_text = (
                         f"{format_brl(allowance['per_day_cents'])}/dia nos {allowance['days_remaining']} dias restantes"
                         if allowance
@@ -295,16 +308,27 @@ def render() -> None:
                         format_brl(free),
                         sub=(
                             f"Receita {format_brl(available['income_total_cents'])} - "
-                            f"compromissos {format_brl(available['committed_cents'])}"
+                            f"compromissos {format_brl(available['bills_cents'])} - "
+                            f"metas {format_brl(available['goals_need_cents'])}"
                         ),
-                        value_color=components.money_color(free),
-                        glow=theme.current()['glow_pos' if free >= 0 else 'glow_neg'],
+                        value_color=(
+                            components.money_color(free)
+                            if is_real_shortfall or free >= 0
+                            else theme.var("amber")
+                        ),
+                        glow=(
+                            theme.current()["glow_pos"]
+                            if free >= 0
+                            else theme.current()["glow_neg"] if is_real_shortfall else "none"
+                        ),
                         delta_text=allowance_text,
                         help_text=(
                             "Receita recebida + recorrencias de entrada ainda a vencer, menos "
-                            "despesas ja pagas, contas fixas a vencer e o quanto voce precisa "
-                            "guardar este mes para suas metas com prazo. O segundo valor divide "
-                            "isso pelos dias que faltam no ciclo."
+                            "despesas ja pagas e contas fixas a vencer (compromissos), menos o "
+                            "quanto voce precisa guardar este mes para suas metas com prazo. "
+                            "Metas nao sao divida: se esse numero ficar negativo so por causa "
+                            "delas, o ritmo da meta e que pode ceder, nao suas contas. O segundo "
+                            "valor divide o total pelos dias que faltam no ciclo."
                         ),
                     )
                 previous_net_worth = trend_points[0][1] if len(trend_points) > 1 else None

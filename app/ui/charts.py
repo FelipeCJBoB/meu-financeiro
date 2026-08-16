@@ -11,6 +11,14 @@ from app.services import forecast, networth, planning
 from app.services import transactions as transactions_service
 from app.services.money import month_key
 
+# Shared bar polish: a 4px rounded data-end reads as a considered mark instead of
+# a raw block, and a wider gap between columns is air the eye reads as "breathing
+# room" - the single change that most separates a "nice" bar chart from a "cheap"
+# one at this data density. bargroupgap only matters when two bars share a slot.
+BAR_CORNER_RADIUS = 4
+BAR_GAP = 0.35
+BAR_GROUP_GAP = 0.12
+
 
 def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
     """Stacked bars: cash contributed vs. gains/losses, with a total line on top."""
@@ -31,7 +39,10 @@ def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
             x=x,
             y=contributed,
             name="Aportado",
-            marker=dict(color=t["accent"]),
+            marker=dict(
+                color=t["accent"], cornerradius=BAR_CORNER_RADIUS,
+                line=dict(color=t["s1"], width=2),
+            ),
             hovertemplate="Aportado: R$ %{y:,.2f}<extra></extra>",
         )
     )
@@ -40,7 +51,10 @@ def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
             x=x,
             y=gains,
             name="Ganho/perda",
-            marker=dict(color=gain_colors),
+            marker=dict(
+                color=gain_colors, cornerradius=BAR_CORNER_RADIUS,
+                line=dict(color=t["s1"], width=2),
+            ),
             hovertemplate="Ganho/perda: R$ %{y:,.2f}<extra></extra>",
         )
     )
@@ -57,6 +71,7 @@ def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
     )
     fig.update_layout(
         barmode="relative",
+        bargap=BAR_GAP,
         margin=dict(l=0, r=0, t=28 if show_legend else 4, b=0),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
@@ -92,7 +107,7 @@ def monthly_comparison_figure(
             x=x,
             y=incomes,
             name="Receitas",
-            marker=dict(color=t["green"]),
+            marker=dict(color=t["green"], cornerradius=BAR_CORNER_RADIUS),
             hovertemplate="Receitas: R$ %{y:,.2f}<extra></extra>",
         )
     )
@@ -101,12 +116,14 @@ def monthly_comparison_figure(
             x=x,
             y=expenses,
             name="Despesas",
-            marker=dict(color=t["red"]),
+            marker=dict(color=t["red"], cornerradius=BAR_CORNER_RADIUS),
             hovertemplate="Despesas: R$ %{y:,.2f}<extra></extra>",
         )
     )
     fig.update_layout(
         barmode="group",
+        bargap=BAR_GAP,
+        bargroupgap=BAR_GROUP_GAP,
         margin=dict(l=0, r=0, t=28, b=0),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
@@ -217,12 +234,13 @@ def cashflow_trend_figure(
         go.Bar(
             x=x,
             y=net,
-            marker=dict(color=colors),
+            marker=dict(color=colors, cornerradius=BAR_CORNER_RADIUS),
             hovertemplate="%{x}: R$ %{y:,.2f}<extra></extra>",
         )
     )
     fig.add_hline(y=0, line_width=1, line_color=t["border"])
     fig.update_layout(
+        bargap=BAR_GAP,
         margin=dict(l=0, r=0, t=6, b=0),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
@@ -278,12 +296,18 @@ def category_trend_figure(
                 x=labels,
                 y=[v / 100 for v in row["values"]],
                 name=row["name"],
-                marker=dict(color=row["color"]),
+                # A surface-colour outline is how a stacked bar fakes the 2px gap
+                # between segments - Plotly has no native inter-segment spacing.
+                marker=dict(
+                    color=row["color"], cornerradius=BAR_CORNER_RADIUS,
+                    line=dict(color=t["s1"], width=2),
+                ),
                 hovertemplate=f"{row['name']}: R$ %{{y:,.2f}}<extra></extra>",
             )
         )
     fig.update_layout(
         barmode="stack",
+        bargap=BAR_GAP,
         margin=dict(l=0, r=0, t=30, b=0),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
@@ -372,7 +396,7 @@ def budget_comparison_figure(month: str, cycle_start_day: int = 1) -> go.Figure:
             x=budget_vals,
             name="Orcado",
             orientation="h",
-            marker=dict(color=theme.rgba(t["textm"], 0.25)),
+            marker=dict(color=theme.rgba(t["textm"], 0.25), cornerradius=BAR_CORNER_RADIUS),
             hovertemplate="%{y} · orcado: R$ %{x:,.2f}<extra></extra>",
         )
     )
@@ -382,12 +406,14 @@ def budget_comparison_figure(month: str, cycle_start_day: int = 1) -> go.Figure:
             x=spent_vals,
             name="Gasto",
             orientation="h",
-            marker=dict(color=colors),
+            marker=dict(color=colors, cornerradius=BAR_CORNER_RADIUS),
             hovertemplate="%{y} · gasto: R$ %{x:,.2f}<extra></extra>",
         )
     )
     fig.update_layout(
         barmode="group",
+        bargap=BAR_GAP,
+        bargroupgap=BAR_GROUP_GAP,
         margin=dict(l=0, r=0, t=28, b=0),
         height=max(160, len(rows) * 46 + 40),
         paper_bgcolor="rgba(0,0,0,0)",
@@ -450,7 +476,7 @@ def budget_history_figure(
             x=x,
             y=[r["budget_cents"] / 100 for r in rows],
             name="Orcado",
-            marker=dict(color=theme.rgba(t["textm"], 0.30)),
+            marker=dict(color=theme.rgba(t["textm"], 0.30), cornerradius=BAR_CORNER_RADIUS),
             hovertemplate="Orcado: R$ %{y:,.2f}<extra></extra>",
         )
     )
@@ -459,12 +485,14 @@ def budget_history_figure(
             x=x,
             y=[r["spent_cents"] / 100 for r in rows],
             name="Gasto",
-            marker=dict(color=t["accent"]),
+            marker=dict(color=t["accent"], cornerradius=BAR_CORNER_RADIUS),
             hovertemplate="Gasto: R$ %{y:,.2f}<extra></extra>",
         )
     )
     fig.update_layout(
         barmode="group",
+        bargap=BAR_GAP,
+        bargroupgap=BAR_GROUP_GAP,
         margin=dict(l=0, r=0, t=28, b=0),
         height=height,
         paper_bgcolor="rgba(0,0,0,0)",
