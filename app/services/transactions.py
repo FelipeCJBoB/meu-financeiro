@@ -26,6 +26,7 @@ def create_transaction(
     tags: str | None = None,
     notes: str | None = None,
     recurring_rule_id: int | None = None,
+    balance_after_cents: int | None = None,
 ) -> Transaction:
     if type_ == TransactionType.transfer:
         if not transfer_account_id:
@@ -53,6 +54,7 @@ def create_transaction(
         tags=tags,
         notes=notes,
         recurring_rule_id=recurring_rule_id,
+        balance_after_cents=balance_after_cents,
     )
     session.add(transaction)
     session.commit()

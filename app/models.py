@@ -107,6 +107,11 @@ class Transaction(SQLModel, table=True):
     tags: str | None = None
     notes: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Only set for type=adjustment: the absolute balance the user confirmed as of
+    # `date`, stored verbatim so it survives later backdated inserts. amount_cents
+    # keeps storing the delta (what the ledger row displays); this is the anchor
+    # account_balance_cents() rebuilds from, instead of re-summing everything.
+    balance_after_cents: int | None = Field(default=None)
 
 
 class TransactionSplit(SQLModel, table=True):

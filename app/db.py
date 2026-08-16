@@ -48,6 +48,7 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("settings", "window_height", "INTEGER DEFAULT 1440"),
     ("goals", "status", "TEXT DEFAULT 'active'"),
     ("settings", "theme_name", "TEXT DEFAULT 'linen'"),
+    ("transactions", "balance_after_cents", "INTEGER"),
 ]
 
 
@@ -85,12 +86,71 @@ def _backfill_goal_contributions(session: Session) -> None:
     session.commit()
 
 
+def _backfill_adjustment_anchors(session: Session) -> None:
+    """Balance sync entries made before balance_after_cents existed only stored
+    a delta, which the current-balance calc can no longer use safely once other
+    transactions get added out of order around them - see account_balance_cents.
+    Reconstruct the absolute value each one resolved to by replaying every
+    transaction on that account in creation order (id), exactly like the old
+    balance calc summed them, and snapshotting the running total the moment
+    each adjustment fired. This runs once per adjustment, ever - after today,
+    every new "Ajustar saldo" already stores its own anchor at creation time."""
+    from app.models import Account, Transaction, TransactionType
+
+    accounts = session.exec(select(Account)).all()
+    for account in accounts:
+        pending = session.exec(
+            select(Transaction).where(
+                Transaction.account_id == account.id,
+                Transaction.type == TransactionType.adjustment,
+                Transaction.balance_after_cents.is_(None),
+            )
+        ).first()
+        if pending is None:
+            continue
+
+        own = session.exec(
+            select(Transaction)
+            .where(Transaction.account_id == account.id)
+            .order_by(Transaction.id)
+        ).all()
+        incoming = session.exec(
+            select(Transaction)
+            .where(
+                Transaction.transfer_account_id == account.id,
+                Transaction.type == TransactionType.transfer,
+            )
+            .order_by(Transaction.id)
+        ).all()
+        events = sorted(
+            [(tx.id, False, tx) for tx in own] + [(tx.id, True, tx) for tx in incoming],
+            key=lambda e: e[0],
+        )
+
+        running = account.initial_balance_cents
+        for _id, is_incoming_transfer, tx in events:
+            if is_incoming_transfer:
+                running += tx.amount_cents
+                continue
+            if tx.type == TransactionType.income:
+                running += tx.amount_cents
+            elif tx.type in (TransactionType.expense, TransactionType.transfer):
+                running -= tx.amount_cents
+            elif tx.type == TransactionType.adjustment:
+                running += tx.amount_cents
+                if tx.balance_after_cents is None:
+                    tx.balance_after_cents = running
+                    session.add(tx)
+        session.commit()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _run_migrations()
     with Session(engine) as session:
         _seed_categories(session)
         _backfill_goal_contributions(session)
+        _backfill_adjustment_anchors(session)
 
 
 def _seed_categories(session: Session) -> None:

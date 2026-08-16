@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlmodel import Session, select
+from datetime import date
+
+from sqlmodel import Session, and_, or_, select
 
 from app.models import Account, AccountType, Goal, RecurringRule, Transaction, TransactionType
 
@@ -26,15 +28,55 @@ def create_account(
     return account
 
 
-def account_balance_cents(session: Session, account_id: int) -> int:
+def account_balance_cents(session: Session, account_id: int, *, as_of: date | None = None) -> int:
+    """Current balance: the last confirmed "Ajustar saldo" plus every real money
+    movement dated strictly after it, up to `as_of` (today by default).
+
+    A transaction dated on or before that last sync is treated as something the
+    real-world balance the user typed in already accounts for - logging a bill
+    afterwards, just to categorize it, must not subtract it a second time.
+    Summing every transaction regardless of date, the old behaviour, double
+    counted every such backdated entry. Anything dated after `as_of` (a bill
+    pre-logged for later this month) is future activity that has not left the
+    account yet, so it is excluded too, the same way an unconfirmed recurring
+    charge does not touch the balance until it is actually paid.
+    """
+    if as_of is None:
+        as_of = date.today()
+
     account = session.get(Account, account_id)
     if account is None:
         raise ValueError(f"Conta {account_id} nao encontrada")
 
-    total = account.initial_balance_cents
+    anchor = session.exec(
+        select(Transaction)
+        .where(
+            Transaction.account_id == account_id,
+            Transaction.type == TransactionType.adjustment,
+            Transaction.balance_after_cents.is_not(None),
+            Transaction.date <= as_of,
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+    ).first()
 
-    outgoing = session.exec(select(Transaction).where(Transaction.account_id == account_id)).all()
-    for tx in outgoing:
+    if anchor is not None:
+        total = anchor.balance_after_cents
+        # Same-day entries need a second, id-based tiebreak: a purchase logged
+        # today after the sync is new activity and must count, but the sync
+        # itself (and anything dated before it) is already baked into the
+        # anchor value above.
+        after_anchor = or_(
+            Transaction.date > anchor.date,
+            and_(Transaction.date == anchor.date, Transaction.id > anchor.id),
+        )
+    else:
+        total = account.initial_balance_cents
+        after_anchor = None
+
+    stmt = select(Transaction).where(Transaction.account_id == account_id, Transaction.date <= as_of)
+    if after_anchor is not None:
+        stmt = stmt.where(after_anchor)
+    for tx in session.exec(stmt).all():
         if tx.type == TransactionType.income:
             total += tx.amount_cents
         elif tx.type == TransactionType.expense:
@@ -44,13 +86,14 @@ def account_balance_cents(session: Session, account_id: int) -> int:
         elif tx.type == TransactionType.adjustment:
             total += tx.amount_cents
 
-    incoming = session.exec(
-        select(Transaction).where(
-            Transaction.transfer_account_id == account_id,
-            Transaction.type == TransactionType.transfer,
-        )
-    ).all()
-    for tx in incoming:
+    incoming_stmt = select(Transaction).where(
+        Transaction.transfer_account_id == account_id,
+        Transaction.type == TransactionType.transfer,
+        Transaction.date <= as_of,
+    )
+    if after_anchor is not None:
+        incoming_stmt = incoming_stmt.where(after_anchor)
+    for tx in session.exec(incoming_stmt).all():
         total += tx.amount_cents
 
     return total
@@ -155,15 +198,19 @@ def delete_account(session: Session, account_id: int, *, cascade: bool = False) 
 
 def adjust_balance(session: Session, account_id: int, new_balance_cents: int, *, description: str = "Ajuste de saldo") -> Transaction:
     from app.services.transactions import create_transaction
-    from datetime import date as date_cls
 
-    current = account_balance_cents(session, account_id)
+    today = date.today()
+    current = account_balance_cents(session, account_id, as_of=today)
     delta = new_balance_cents - current
     return create_transaction(
         session,
-        date_=date_cls.today(),
+        date_=today,
         description=description,
         account_id=account_id,
         type_=TransactionType.adjustment,
         amount_cents=delta,
+        # The anchor account_balance_cents() rebuilds from next time - stored
+        # as the absolute value so a later backdated insert can't erode it the
+        # way relying only on the delta above did.
+        balance_after_cents=new_balance_cents,
     )
