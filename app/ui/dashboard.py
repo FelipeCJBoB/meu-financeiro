@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import contextlib
-
 from nicegui import ui
 
 from app import state, theme
@@ -258,6 +256,7 @@ def render() -> None:
                 else None
             )
             trend_points = networth.trend(session, months=2) if is_combined else []
+            sparkline_trend = networth.trend(session, months=7) if is_combined else []
 
             with ui.row().style(
                 "width:100%;justify-content:space-between;align-items:center;"
@@ -290,14 +289,83 @@ def render() -> None:
             if is_combined:
                 _exception_banner(session, status, lambda: ui.navigate.reload())
 
+            # T1 - hero: the one number this whole screen exists to answer. It sits
+            # unboxed above every card, roughly 1.6x a KPI card's size, so it reads
+            # as the headline instead of one card among ten equals - see design.py.
+            previous_net_worth = trend_points[0][1] if len(trend_points) > 1 else None
+            if previous_net_worth:
+                nw_delta = total_net_worth - previous_net_worth
+                nw_arrow = "▲" if nw_delta >= 0 else "▼"
+                nw_delta_text = (
+                    f"{nw_arrow} {format_brl(abs(nw_delta))} "
+                    f"({abs(nw_delta) / abs(previous_net_worth) * 100:.1f}%) vs mes anterior"
+                )
+                nw_delta_color = theme.var("green") if nw_delta >= 0 else theme.var("red")
+            else:
+                nw_delta_text, nw_delta_color = "", None
+
+            components.hero_metric(
+                "Patrimonio liquido" if is_combined else f"Saldo · {selected_account.name}",
+                format_brl(total_net_worth),
+                delta_text=nw_delta_text,
+                delta_color=nw_delta_color,
+                sparkline_points=(
+                    [v / 100 for _, v in sparkline_trend] if len(sparkline_trend) > 1 else None
+                ),
+                sparkline_color=nw_delta_color or theme.var("text2"),
+                help_text=(
+                    "Tudo que voce tem menos tudo que voce deve."
+                    if is_combined
+                    else "Saldo calculado desta conta: saldo inicial mais tudo que entrou e saiu dela."
+                ),
+                on_click=lambda: ui.navigate.to("/patrimonio"),
+            )
+
+            free = available["available_cents"] if available else None
+            allowance_text = (
+                f"{format_brl(allowance['per_day_cents'])}/dia nos {allowance['days_remaining']} dias restantes"
+                if allowance
+                else ""
+            )
+            goals_need_cents = available["goals_need_cents"] if available else 0
+            goals_in_t2 = goals_need_cents > 0
+            free_after_goals = (free - goals_need_cents) if free is not None else 0
+
+            # The pace/budget card is a single slot either way: spend-pace projection
+            # and the plain budget percentage never make sense on screen together,
+            # so only one of them ever exists at a time.
+            pace_label = pace_value = pace_sub = pace_color = None
+            pace_delta = pace_delta_color = pace_help = None
+            if pace:
+                over = pace["over_by_cents"]
+                pace_label = "Ritmo de gasto"
+                pace_value = format_brl(pace["projected_cents"])
+                pace_sub = f"Projetado p/ fim do mes (dia {pace['days_elapsed']} de {pace['days_in_month']})"
+                pace_color = theme.var("red") if over > 0 else theme.var("green")
+                pace_delta = f"{'Acima' if over > 0 else 'Dentro'} do orcamento em {format_brl(abs(over))}"
+                pace_delta_color = pace_color
+                pace_help = (
+                    "Projecao linear: gasto ate hoje dividido pelos dias decorridos, "
+                    "multiplicado pelos dias do ciclo. Assume que voce vai continuar "
+                    "gastando no mesmo ritmo ate o fim do mes."
+                )
+            elif is_combined:
+                pace_label = "Orcamento do mes"
+                pace_value = f"{budget_pct * 100:.0f}%" if summary["budget_cents"] else "--"
+                pace_sub = (
+                    f"{format_brl(summary['spent_cents'])} de {format_brl(summary['budget_cents'])}"
+                    if summary["budget_cents"]
+                    else "Nenhum orcamento definido"
+                )
+                pace_help = "Percentual do total orcado nas categorias que ja foi gasto neste ciclo."
+
+            # T2 - decision: at most three cards, the numbers that change what you do
+            # today. Metas keeps its own dedicated card whenever it applies - Ritmo/
+            # Orcamento is what steps aside for it, folding into the T3 strip below,
+            # since it overlaps conceptually with Fluxo (both read "how is this
+            # month trending") in a way Metas does not.
             with components.kpi_grid():
-                if available:
-                    free = available["available_cents"]
-                    allowance_text = (
-                        f"{format_brl(allowance['per_day_cents'])}/dia nos {allowance['days_remaining']} dias restantes"
-                        if allowance
-                        else ""
-                    )
+                if free is not None:
                     components.kpi_card(
                         "Disponivel para gastar",
                         format_brl(free),
@@ -311,59 +379,12 @@ def render() -> None:
                         help_text=(
                             "Receita recebida + recorrencias de entrada ainda a vencer, menos "
                             "despesas ja pagas e contas fixas a vencer neste ciclo. Metas nao "
-                            "entram nessa conta - elas tem card proprio mais abaixo, porque "
-                            "meta e um objetivo que voce escolheu, nao um compromisso como uma "
-                            "conta. O segundo valor divide o total pelos dias que faltam no ciclo."
+                            "entram nessa conta - elas tem card proprio ao lado, porque meta e "
+                            "um objetivo que voce escolheu, nao um compromisso como uma conta. "
+                            "O segundo valor divide o total pelos dias que faltam no ciclo."
                         ),
+                        on_click=lambda: ui.navigate.to("/orcamento"),
                     )
-                    free_after_goals = free - available["goals_need_cents"]
-                    if available["goals_need_cents"] > 0:
-                        goals_covered = free_after_goals >= 0
-                        components.kpi_card(
-                            "Metas do mes",
-                            format_brl(available["goals_need_cents"]),
-                            sub=f"Livre depois das contas: {format_brl(free)}",
-                            delta_text=(
-                                "Cabe dentro do que sobra depois das contas"
-                                if goals_covered
-                                else f"Faltam {format_brl(abs(free_after_goals))} para cobrir o ritmo deste mes"
-                            ),
-                            delta_color=theme.var("pos") if goals_covered else theme.var("amber"),
-                            help_text=(
-                                "Soma do quanto cada meta com prazo precisa receber este mes para "
-                                "chegar no valor combinado na data combinada. Nao e uma cobranca: "
-                                "se nao couber no que sobra depois das contas, o ritmo da meta e "
-                                "que pode ceder - ajuste o aporte ou o prazo em Metas."
-                            ),
-                        )
-                previous_net_worth = trend_points[0][1] if len(trend_points) > 1 else None
-                if previous_net_worth:
-                    nw_delta = total_net_worth - previous_net_worth
-                    nw_arrow = "▲" if nw_delta >= 0 else "▼"
-                    nw_delta_text = (
-                        f"{nw_arrow} {format_brl(abs(nw_delta))} "
-                        f"({abs(nw_delta) / abs(previous_net_worth) * 100:.1f}%) vs mes anterior"
-                    )
-                    nw_delta_color = theme.var("green") if nw_delta >= 0 else theme.var("red")
-                else:
-                    nw_delta_text, nw_delta_color = "", None
-
-                components.kpi_card(
-                    "Patrimonio liquido" if is_combined else f"Saldo · {selected_account.name}",
-                    format_brl(total_net_worth),
-                    sub=(
-                        f"Ativos {format_brl(sheet['assets_cents'])} - dividas {format_brl(sheet['liabilities_cents'])}"
-                        if is_combined
-                        else components.ACCOUNT_TYPE_LABELS.get(selected_account.type.value, "")
-                    ),
-                    delta_text=nw_delta_text,
-                    delta_color=nw_delta_color,
-                    help_text=(
-                        "Tudo que voce tem menos tudo que voce deve."
-                        if is_combined
-                        else "Saldo calculado desta conta: saldo inicial mais tudo que entrou e saiu dela."
-                    ),
-                )
                 components.kpi_card(
                     f"Fluxo · {period_label}",
                     format_brl(cash_flow),
@@ -376,104 +397,117 @@ def render() -> None:
                         "Receitas menos despesas lancadas no periodo selecionado "
                         "(nao inclui recorrencias futuras)."
                     ),
+                    on_click=lambda: ui.navigate.to("/lancamentos"),
                 )
-                if pace:
-                    over = pace["over_by_cents"]
+                if goals_in_t2:
+                    goals_covered = free_after_goals >= 0
                     components.kpi_card(
-                        "Ritmo de gasto",
-                        format_brl(pace["projected_cents"]),
-                        sub=f"Projetado p/ fim do mes (dia {pace['days_elapsed']} de {pace['days_in_month']})",
-                        value_color=theme.var("red") if over > 0 else theme.var("green"),
+                        "Metas do mes",
+                        format_brl(goals_need_cents),
+                        sub=f"Livre depois das contas: {format_brl(free)}",
                         delta_text=(
-                            f"{'Acima' if over > 0 else 'Dentro'} do orcamento em {format_brl(abs(over))}"
+                            "Cabe dentro do que sobra depois das contas"
+                            if goals_covered
+                            else f"Faltam {format_brl(abs(free_after_goals))} para cobrir o ritmo deste mes"
                         ),
-                        delta_color=theme.var("red") if over > 0 else theme.var("green"),
+                        delta_color=theme.var("pos") if goals_covered else theme.var("amber"),
                         help_text=(
-                            "Projecao linear: gasto ate hoje dividido pelos dias decorridos, "
-                            "multiplicado pelos dias do ciclo. Assume que voce vai continuar "
-                            "gastando no mesmo ritmo ate o fim do mes."
+                            "Soma do quanto cada meta com prazo precisa receber este mes para "
+                            "chegar no valor combinado na data combinada. Nao e uma cobranca: "
+                            "se nao couber no que sobra depois das contas, o ritmo da meta e "
+                            "que pode ceder - ajuste o aporte ou o prazo em Metas."
                         ),
+                        on_click=lambda: ui.navigate.to("/metas"),
                     )
-                elif is_combined:
+                elif pace_label:
                     components.kpi_card(
-                        "Orcamento do mes",
-                        f"{budget_pct * 100:.0f}%" if summary["budget_cents"] else "--",
-                        sub=(
-                            f"{format_brl(summary['spent_cents'])} de {format_brl(summary['budget_cents'])}"
-                            if summary["budget_cents"]
-                            else "Nenhum orcamento definido"
-                        ),
-                        help_text="Percentual do total orcado nas categorias que ja foi gasto neste ciclo.",
+                        pace_label,
+                        pace_value,
+                        sub=pace_sub,
+                        value_color=pace_color,
+                        delta_text=pace_delta,
+                        delta_color=pace_delta_color,
+                        help_text=pace_help,
+                        on_click=lambda: ui.navigate.to("/orcamento"),
                     )
 
-            has_secondary_kpis = bool(
-                emergency
-                or period_savings_rate is not None
-                or (is_combined and sheet["liabilities_cents"] > 0)
-                or worst_category
-            )
-            with components.kpi_grid() if has_secondary_kpis else contextlib.nullcontext():
-                if emergency:
-                    months_covered = emergency["months_covered"]
-                    if months_covered >= 6:
-                        cushion_color, cushion_note = theme.var("green"), "Colchao confortavel"
-                    elif months_covered >= 3:
-                        cushion_color, cushion_note = theme.var("amber"), "Da para respirar"
-                    else:
-                        cushion_color, cushion_note = theme.var("red"), "Colchao curto"
-                    components.kpi_card(
-                        "Reserva de emergencia",
-                        f"{months_covered:.1f} meses",
-                        sub=f"Gasto medio {format_brl(emergency['average_expense_cents'])}/mes",
-                        value_color=cushion_color,
-                        delta_text=cushion_note,
-                        delta_color=cushion_color,
-                        help_text=(
+            # T3 - diagnostic: compact, no card weight, one glance to confirm nothing
+            # here needs attention right now.
+            stat_items = []
+            if goals_in_t2 and pace_label:
+                stat_items.append(
+                    {
+                        "label": pace_label,
+                        "value": pace_value,
+                        "note": pace_delta,
+                        "value_color": pace_color,
+                        "note_color": pace_delta_color,
+                        "help_text": pace_help,
+                    }
+                )
+            if emergency:
+                months_covered = emergency["months_covered"]
+                if months_covered >= 6:
+                    cushion_color, cushion_note = theme.var("green"), "Colchao confortavel"
+                elif months_covered >= 3:
+                    cushion_color, cushion_note = theme.var("amber"), "Da para respirar"
+                else:
+                    cushion_color, cushion_note = theme.var("red"), "Colchao curto"
+                stat_items.append(
+                    {
+                        "label": "Reserva de emergencia",
+                        "value": f"{months_covered:.1f} meses",
+                        "note": cushion_note,
+                        "value_color": cushion_color,
+                        "note_color": cushion_color,
+                        "help_text": (
                             "Quanto tempo o dinheiro que voce alcanca rapido (conta corrente e "
                             "poupanca) cobre seu gasto medio, se a receita parasse hoje. Imovel e "
                             "investimento travado nao entram: nao pagam o mercado do mes que vem."
                         ),
-                    )
-                if period_savings_rate is not None:
-                    components.kpi_card(
-                        f"Taxa de poupanca · {period_label}",
-                        f"{period_savings_rate * 100:.0f}%",
-                        sub="Da receita do periodo que nao virou gasto",
-                        value_color=(
+                    }
+                )
+            if period_savings_rate is not None:
+                stat_items.append(
+                    {
+                        "label": f"Taxa de poupanca · {period_label}",
+                        "value": f"{period_savings_rate * 100:.0f}%",
+                        "note": "Da receita do periodo que nao virou gasto",
+                        "value_color": (
                             theme.var("green") if period_savings_rate >= 0.2 else theme.var("amber")
                         ),
-                        help_text="Receitas menos despesas, dividido pelas receitas do periodo.",
-                    )
-                if is_combined and sheet["liabilities_cents"] > 0 and sheet["assets_cents"] > 0:
-                    ratio = sheet["liabilities_cents"] / sheet["assets_cents"]
-                    components.kpi_card(
-                        "Dividas sobre ativos",
-                        f"{ratio * 100:.0f}%",
-                        sub=f"{format_brl(sheet['liabilities_cents'])} em dividas",
-                        value_color=theme.var("green") if ratio < 0.5 else theme.var("amber"),
-                        help_text="Total de dividas dividido pelo total de ativos.",
-                    )
-                if worst_category:
-                    category = worst_category["category"]
-                    over = worst_category["spent_cents"] - worst_category["budget_cents"]
-                    components.kpi_card(
-                        "Categoria em maior desvio",
-                        category.name,
-                        sub=(
-                            f"{format_brl(worst_category['spent_cents'])} de "
-                            f"{format_brl(worst_category['budget_cents'])}"
-                        ),
-                        value_color=(
-                            theme.var("red") if over > 0 else theme.var("amber")
-                        ),
-                        delta_text=(
+                        "help_text": "Receitas menos despesas, dividido pelas receitas do periodo.",
+                    }
+                )
+            if is_combined and sheet["liabilities_cents"] > 0 and sheet["assets_cents"] > 0:
+                ratio = sheet["liabilities_cents"] / sheet["assets_cents"]
+                stat_items.append(
+                    {
+                        "label": "Dividas sobre ativos",
+                        "value": f"{ratio * 100:.0f}%",
+                        "note": f"{format_brl(sheet['liabilities_cents'])} em dividas",
+                        "value_color": theme.var("green") if ratio < 0.5 else theme.var("amber"),
+                        "help_text": "Total de dividas dividido pelo total de ativos.",
+                    }
+                )
+            if worst_category:
+                category = worst_category["category"]
+                over = worst_category["spent_cents"] - worst_category["budget_cents"]
+                stat_items.append(
+                    {
+                        "label": "Categoria em maior desvio",
+                        "value": category.name,
+                        "note": (
                             f"{format_brl(over)} acima do limite"
                             if over > 0
                             else f"{worst_category['pct'] * 100:.0f}% do limite usado"
                         ),
-                        delta_color=theme.var("red") if over > 0 else theme.var("amber"),
-                        help_text="A categoria mais proxima de estourar (ou ja estourada) neste ciclo.",
-                    )
+                        "value_color": theme.var("red") if over > 0 else theme.var("amber"),
+                        "note_color": theme.var("red") if over > 0 else theme.var("amber"),
+                        "help_text": "A categoria mais proxima de estourar (ou ja estourada) neste ciclo.",
+                    }
+                )
+            components.stat_strip(stat_items)
 
             chart_months = max(6, period_months)
 

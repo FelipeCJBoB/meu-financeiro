@@ -4,7 +4,7 @@ from typing import Callable
 
 from nicegui import ui
 
-from app import state, theme
+from app import design, state, theme
 from app.db import get_session
 from app.models import AccountType
 from app.services import accounts as accounts_service
@@ -31,7 +31,7 @@ def status_color_key(pct: float) -> str:
 
 def card(*, padding: str = "1rem", grow: bool = False) -> ui.column:
     element = ui.column().style(
-        f"background:{theme.var('s1')};border-radius:12px;padding:{padding};"
+        f"background:{theme.var('s1')};border-radius:{design.radius('md')};padding:{padding};"
         f"gap:0;box-sizing:border-box;width:100%"
         + (";flex:1" if grow else "")
     )
@@ -76,19 +76,26 @@ def kpi_card(
     delta_color: str | None = None,
     help_text: str = "",
     glow: str | None = None,
-) -> None:
-    with card():
+    on_click: Callable[[], None] | None = None,
+) -> ui.column:
+    """A T2-tier decision card. Keep at most three of these on a screen at once -
+    a fourth candidate belongs in `stat_strip` instead, see design.py's layer
+    model. `on_click` makes the whole card a drill-down into the screen that
+    explains the number, e.g. Disponivel -> Orcamento."""
+    element = card()
+    with element:
         with ui.row().style("align-items:center;gap:0;margin-bottom:6px"):
             ui.label(label).style(
                 f"font-size:{theme.font('small')};color:{theme.var('text2')}"
             )
             if help_text:
                 info_icon(help_text)
+            if on_click:
+                ui.icon("chevron_right").style(
+                    f"font-size:16px;color:{theme.var('textm')};margin-left:auto"
+                )
         value_label = ui.label(value).classes("money")
-        value_style = (
-            f"font-size:{theme.font('kpi')};font-weight:600;line-height:1.15;"
-            f"color:{value_color or theme.var('text')}"
-        )
+        value_style = design.type_css("kpi", color=value_color or theme.var("text"))
         if glow:
             value_style += f";text-shadow:{glow}"
         value_label.style(value_style)
@@ -101,6 +108,109 @@ def kpi_card(
                 f"font-size:{theme.font('meta')};"
                 f"color:{delta_color or theme.var('textm')};margin-top:3px"
             )
+    if on_click:
+        element.style("cursor:pointer")
+        element.on("click", on_click)
+    return element
+
+
+def sparkline(
+    points: list[float], *, color: str, width: int = 140, height: int = 40
+) -> None:
+    """A trend line with no axes, no legend, no hover - just shape. Used inline
+    beside a hero number, never as a standalone chart."""
+    if len(points) < 2:
+        return
+    lo, hi = min(points), max(points)
+    span = (hi - lo) or 1.0
+    n = len(points)
+    coords = []
+    for i, v in enumerate(points):
+        x = 3 + (i / (n - 1)) * (width - 6)
+        y = height - 4 - ((v - lo) / span) * (height - 8)
+        coords.append(f"{x:.1f},{y:.1f}")
+    last_x, last_y = coords[-1].split(",")
+    svg = (
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+        f'style="flex:none;display:block" aria-hidden="true">'
+        f'<polyline points="{" ".join(coords)}" fill="none" stroke="{color}" '
+        f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        f'<circle cx="{last_x}" cy="{last_y}" r="3" fill="{color}"/>'
+        f"</svg>"
+    )
+    ui.html(svg)
+
+
+def hero_metric(
+    label: str,
+    value: str,
+    *,
+    delta_text: str = "",
+    delta_color: str | None = None,
+    sparkline_points: list[float] | None = None,
+    sparkline_color: str | None = None,
+    help_text: str = "",
+    on_click: Callable[[], None] | None = None,
+) -> None:
+    """T1-tier: the one number the whole screen exists to answer. Unboxed, at
+    roughly 1.6x a KPI card's size, sitting directly on the page background so
+    it reads as the headline rather than one card among equals."""
+    with ui.row().style(
+        "width:100%;justify-content:space-between;align-items:flex-end;"
+        "gap:16px;flex-wrap:wrap" + (";cursor:pointer" if on_click else "")
+    ) as wrapper:
+        with ui.column().style("gap:2px;min-width:0"):
+            with ui.row().style("align-items:center;gap:0"):
+                ui.label(label).style(
+                    f"font-size:{theme.font('small')};color:{theme.var('textm')}"
+                )
+                if help_text:
+                    info_icon(help_text)
+            ui.label(value).classes("money").style(design.type_css("hero", color=theme.var("text")))
+            if delta_text:
+                ui.label(delta_text).style(
+                    f"font-size:{theme.font('label')};"
+                    f"color:{delta_color or theme.var('textm')};margin-top:2px"
+                )
+        if sparkline_points and len(sparkline_points) > 1:
+            sparkline(sparkline_points, color=sparkline_color or theme.var("text2"))
+    if on_click:
+        wrapper.on("click", on_click)
+
+
+def stat_strip(items: list[dict]) -> None:
+    """T3-tier: diagnostic numbers in one compact row, no card background, no
+    individual weight - the point is that none of these need a decision right
+    now. Each item: label, value, and optionally note/value_color/note_color/
+    help_text. Renders nothing for an empty list, so callers never need their
+    own presence check."""
+    if not items:
+        return
+    with ui.row().style(
+        f"width:100%;border-top:0.5px solid {theme.var('border')};"
+        f"border-bottom:0.5px solid {theme.var('border')};"
+        f"padding:{design.space(3)} 0;gap:0;flex-wrap:wrap"
+    ):
+        for i, item in enumerate(items):
+            border = f"border-left:0.5px solid {theme.var('border')};" if i > 0 else ""
+            with ui.column().style(
+                f"flex:1;min-width:150px;{border}padding:0 {design.space(3)};gap:2px"
+            ):
+                with ui.row().style("align-items:center;gap:0"):
+                    ui.label(item["label"]).style(
+                        design.type_css("meta", color=theme.var("textm"))
+                    )
+                    if item.get("help_text"):
+                        info_icon(item["help_text"])
+                ui.label(item["value"]).classes("money").style(
+                    design.type_css("stat", color=item.get("value_color") or theme.var("text"))
+                )
+                if item.get("note"):
+                    ui.label(item["note"]).style(
+                        design.type_css(
+                            "meta", color=item.get("note_color") or theme.var("textm")
+                        )
+                    )
 
 
 def progress_track(
