@@ -9,7 +9,7 @@ from app.db import get_session
 from app.models import GoalStatus
 from app.services import goals as goals_service
 from app.services.money import format_brl, to_cents
-from app.ui import components
+from app.ui import charts, components
 from app.ui.charts import goal_progress_figure
 from app.ui.layout import page_frame
 
@@ -253,7 +253,7 @@ def _goal_card(session, goal) -> None:
             "flat dense no-caps"
         ).style(f"color:{theme.var('accent2')};font-size:14px;margin-top:8px;align-self:flex-start")
 
-        ui.plotly(goal_progress_figure(goal, height=170)).style("width:100%;height:170px")
+        charts.plot(goal_progress_figure(goal, height=170), height=170)
 
 
 @ui.refreshable

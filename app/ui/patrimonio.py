@@ -9,7 +9,7 @@ from app.services import accounts as accounts_service
 from app.services import forecast as forecast_service
 from app.services import networth as networth_service
 from app.services.money import format_brl, to_cents
-from app.ui import components
+from app.ui import charts, components
 from app.ui.charts import composition_donut_figure, forecast_figure, net_worth_figure
 from app.ui.layout import page_frame
 
@@ -113,9 +113,7 @@ def _forecast_section(horizon_days: int) -> None:
             "avulsos. A faixa ao redor reflete a variação real das suas despesas nos últimos "
             "meses (mais larga quanto mais longe no tempo); não é uma garantia estatística."
         ).style(f"font-size:13px;color:{theme.var('textm')};margin-bottom:8px")
-        ui.plotly(forecast_figure(height=200, horizon_days=horizon_days)).style(
-            "width:100%;height:200px"
-        )
+        charts.plot(forecast_figure(height=200, horizon_days=horizon_days), height=200)
 
 
 @ui.refreshable
@@ -130,7 +128,7 @@ def _evolution_section(months: int) -> None:
                 "ganho ou perda de valor."
             ),
         )
-        ui.plotly(net_worth_figure(height=240, months=months)).style("width:100%;height:240px")
+        charts.plot(net_worth_figure(height=240, months=months), height=240)
 
 
 def _account_list(rows, *, title: str, help_text: str, empty: str) -> None:
@@ -275,4 +273,4 @@ def render() -> None:
                     "Distribuição dos ativos",
                     help_text="Proporcao do que voce possui em cada conta. Dividas nao entram aqui.",
                 )
-                ui.plotly(composition_donut_figure(height=240)).style("width:100%")
+                charts.plot(composition_donut_figure(height=240), height=240)

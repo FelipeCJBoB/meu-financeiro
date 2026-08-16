@@ -63,6 +63,12 @@ class Category(SQLModel, table=True):
     name: str
     icon: str = "sell"
     color: str = "#8ab4e8"
+    # Slot in the themed categorical ramp (design.CATEGORICAL). Storing the slot
+    # rather than a hex is what lets a category keep its identity while changing
+    # colour between linen and dusk - one stored hex can only be right in one of
+    # them. None means the user picked a colour by hand: `color` wins and the
+    # theme leaves it alone.
+    color_slot: int | None = Field(default=None)
     kind: CategoryKind = CategoryKind.expense
     parent_id: int | None = Field(default=None, foreign_key="categories.id")
     archived: bool = False

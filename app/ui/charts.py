@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import plotly.graph_objects as go
+from nicegui import ui
 
 from app import theme
 from app.db import get_session
@@ -18,6 +19,86 @@ from app.services.money import month_key
 BAR_CORNER_RADIUS = 4
 BAR_GAP = 0.35
 BAR_GROUP_GAP = 0.12
+
+# Every chart is a finished panel, not an analysis session: no edit toolbar, no
+# zoom, no drag, no double-click reset. Plotly ships all of that on by default,
+# which is what made the app look like a BI tool rather than a product.
+PLOT_CONFIG = {
+    "displayModeBar": False,
+    "displaylogo": False,
+    "responsive": True,
+    "scrollZoom": False,
+    "doubleClick": False,
+    "showTips": False,
+    "showAxisDragHandles": False,
+}
+
+
+def plot(figure: go.Figure | None, *, height: int | None = None):
+    """Renders a figure with the product config applied.
+
+    `ui.plotly()` only forwards a `config` when it is handed a plain dict -
+    `go.Figure.to_plotly_json()` emits `data` and `layout` and nothing else, so
+    passing the Figure straight in, as every call site used to do, made the
+    toolbar impossible to turn off. Converting here is the whole fix.
+    """
+    if figure is None:
+        return None
+    payload = figure.to_plotly_json()
+    payload["config"] = dict(PLOT_CONFIG)
+    element = ui.plotly(payload)
+    resolved = height if height is not None else figure.layout.height
+    style = "width:100%"
+    if resolved:
+        style += f";height:{int(resolved)}px"
+    element.style(style)
+    return element
+
+
+def apply_chart_theme(
+    figure: go.Figure,
+    *,
+    height: int,
+    legend: bool = False,
+    margin_top: int | None = None,
+    axes: bool = True,
+) -> go.Figure:
+    """The chart chrome, in one place.
+
+    This block used to be copy-pasted into eleven figures, which meant a theme
+    tweak was eleven edits and they had already drifted apart. Anything a single
+    chart genuinely needs differently (a date axis, a percent suffix) it still
+    sets itself, after calling this.
+    """
+    t = theme.current()
+    figure.update_layout(
+        height=height,
+        margin=dict(l=0, r=0, t=margin_top if margin_top is not None else (28 if legend else 6), b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=legend,
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, x=0,
+            font=dict(size=theme.FONT["chart_legend"], color=t["text2"]),
+        ),
+        font=dict(size=theme.FONT["chart"], color=t["text2"]),
+        # Without this the tooltip keeps Plotly's own white box, which is
+        # unreadable in dusk and foreign to the app in linen.
+        hoverlabel=dict(
+            bgcolor=t["overlay"],
+            bordercolor=t["border"],
+            font=dict(color=t["text"], size=theme.FONT["chart"]),
+        ),
+        dragmode=False,
+        bargap=BAR_GAP,
+        bargroupgap=BAR_GROUP_GAP,
+    )
+    if axes:
+        figure.update_xaxes(showgrid=False, color=t["textm"])
+        figure.update_yaxes(
+            showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False
+        )
+    return figure
 
 
 def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
@@ -69,22 +150,10 @@ def net_worth_figure(*, height: int = 140, months: int = 6) -> go.Figure:
             hovertemplate="Total: R$ %{y:,.2f}<extra></extra>",
         )
     )
-    fig.update_layout(
-        barmode="relative",
-        bargap=BAR_GAP,
-        margin=dict(l=0, r=0, t=28 if show_legend else 4, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
-        yaxis=dict(
-            showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=True,
-            zerolinecolor=t["border"],
-        ),
-        showlegend=show_legend,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    fig.update_layout(barmode="relative")
+    apply_chart_theme(fig, height=height, legend=show_legend, margin_top=28 if show_legend else 4)
+    fig.update_xaxes(type="category")
+    fig.update_yaxes(zeroline=True, zerolinecolor=t["border"])
     return fig
 
 
@@ -120,20 +189,9 @@ def monthly_comparison_figure(
             hovertemplate="Despesas: R$ %{y:,.2f}<extra></extra>",
         )
     )
-    fig.update_layout(
-        barmode="group",
-        bargap=BAR_GAP,
-        bargroupgap=BAR_GROUP_GAP,
-        margin=dict(l=0, r=0, t=28, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
-        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    fig.update_layout(barmode="group")
+    apply_chart_theme(fig, height=height, legend=True)
+    fig.update_xaxes(type="category")
     return fig
 
 
@@ -198,20 +256,10 @@ def forecast_figure(*, height: int = 200, horizon_days: int = 90) -> go.Figure:
         )
     )
     fig.add_vline(x=today.isoformat(), line_width=1, line_dash="dash", line_color=t["textm"])
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(
-            showgrid=False,
-            color=t["textm"],
-            type="date",
-            range=[today.isoformat(), (today + timedelta(days=horizon_days)).isoformat()],
-        ),
-        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        showlegend=False,
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
+    apply_chart_theme(fig, height=height, margin_top=0)
+    fig.update_xaxes(
+        type="date",
+        range=[today.isoformat(), (today + timedelta(days=horizon_days)).isoformat()],
     )
     return fig
 
@@ -239,17 +287,8 @@ def cashflow_trend_figure(
         )
     )
     fig.add_hline(y=0, line_width=1, line_color=t["border"])
-    fig.update_layout(
-        bargap=BAR_GAP,
-        margin=dict(l=0, r=0, t=6, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
-        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        showlegend=False,
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    apply_chart_theme(fig, height=height)
+    fig.update_xaxes(type="category")
     return fig
 
 
@@ -280,7 +319,11 @@ def category_trend_figure(
             ]
             if sum(values) > 0:
                 series.append(
-                    {"name": category.name, "color": category.color, "values": values}
+                    {
+                        "name": category.name,
+                        "color": theme.category_color(category),
+                        "values": values,
+                    }
                 )
 
     if not series:
@@ -305,21 +348,9 @@ def category_trend_figure(
                 hovertemplate=f"{row['name']}: R$ %{{y:,.2f}}<extra></extra>",
             )
         )
-    fig.update_layout(
-        barmode="stack",
-        bargap=BAR_GAP,
-        margin=dict(l=0, r=0, t=30, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
-        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02, x=0,
-            font=dict(size=theme.FONT["chart_legend"], color=t["text2"]),
-        ),
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    fig.update_layout(barmode="stack")
+    apply_chart_theme(fig, height=height, legend=True, margin_top=30)
+    fig.update_xaxes(type="category")
     return fig
 
 
@@ -358,19 +389,9 @@ def savings_rate_trend_figure(
         annotation_text="referencia 20%",
         annotation_font=dict(size=theme.FONT["chart"], color=t["textm"]),
     )
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=6, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
-        yaxis=dict(
-            showgrid=True, gridcolor=t["border"], color=t["textm"],
-            zeroline=True, zerolinecolor=t["border"], ticksuffix="%",
-        ),
-        showlegend=False,
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    apply_chart_theme(fig, height=height)
+    fig.update_xaxes(type="category")
+    fig.update_yaxes(zeroline=True, zerolinecolor=t["border"], ticksuffix="%")
     return fig
 
 
@@ -410,19 +431,11 @@ def budget_comparison_figure(month: str, cycle_start_day: int = 1) -> go.Figure:
             hovertemplate="%{y} · gasto: R$ %{x:,.2f}<extra></extra>",
         )
     )
-    fig.update_layout(
-        barmode="group",
-        bargap=BAR_GAP,
-        bargroupgap=BAR_GROUP_GAP,
-        margin=dict(l=0, r=0, t=28, b=0),
-        height=max(160, len(rows) * 46 + 40),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        yaxis=dict(showgrid=False, color=t["text"]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    fig.update_layout(barmode="group")
+    # Horizontal bars swap which axis carries the scale, so the grid swaps too.
+    apply_chart_theme(fig, height=max(160, len(rows) * 46 + 40), legend=True, axes=False)
+    fig.update_xaxes(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False)
+    fig.update_yaxes(showgrid=False, color=t["text"])
     return fig
 
 
@@ -434,8 +447,10 @@ def composition_donut_figure(*, height: int = 220) -> go.Figure:
 
     labels = [r["account"].name for r in rows]
     values = [r["balance_cents"] / 100 for r in rows]
-    palette = [t["accent"], t["accent2"], t["amber"], t["green"], t["red"], t["textm"]]
-    colors = [palette[i % len(palette)] for i in range(len(rows))]
+    # Accounts are an identity dimension, so they get the categorical ramp. The
+    # old palette borrowed the semantic colours - green, red, amber - which meant
+    # a plain savings account was painted in the "problem" red for no reason.
+    colors = [theme.categorical_color(i) for i in range(len(rows))]
 
     fig = go.Figure()
     fig.add_trace(
@@ -445,18 +460,14 @@ def composition_donut_figure(*, height: int = 220) -> go.Figure:
             hole=0.6,
             marker=dict(colors=colors, line=dict(color=t["s1"], width=2)),
             textinfo="percent",
-            textfont=dict(color="#ffffff", size=theme.FONT["chart"]),
+            # No explicit colour: Plotly picks black or white per slice by its own
+            # contrast test, which a fixed white failed on the lighter slots.
+            textfont=dict(size=theme.FONT["chart"]),
             hovertemplate="%{label}: R$ %{value:,.2f} (%{percent})<extra></extra>",
         )
     )
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=True,
-        legend=dict(orientation="v", font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    apply_chart_theme(fig, height=height, legend=True, margin_top=0, axes=False)
+    fig.update_layout(legend=dict(orientation="v", y=0.5, yanchor="middle", x=1.0))
     return fig
 
 
@@ -489,19 +500,9 @@ def budget_history_figure(
             hovertemplate="Gasto: R$ %{y:,.2f}<extra></extra>",
         )
     )
-    fig.update_layout(
-        barmode="group",
-        bargap=BAR_GAP,
-        bargroupgap=BAR_GROUP_GAP,
-        margin=dict(l=0, r=0, t=28, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color=t["textm"], type="category"),
-        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    fig.update_layout(barmode="group")
+    apply_chart_theme(fig, height=height, legend=True)
+    fig.update_xaxes(type="category")
     return fig
 
 
@@ -535,16 +536,8 @@ def goal_progress_figure(goal, *, height: int = 200) -> go.Figure:
             hovertemplate="Real: R$ %{y:,.2f}<extra></extra>",
         )
     )
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=28, b=0),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color=t["textm"], type="date"),
-        yaxis=dict(showgrid=True, gridcolor=t["border"], color=t["textm"], zeroline=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=theme.FONT["chart_legend"], color=t["text2"])),
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    apply_chart_theme(fig, height=height, legend=True)
+    fig.update_xaxes(type="date")
     return fig
 
 
@@ -565,8 +558,7 @@ def sankey_figure(
         return None
     t = theme.current()
 
-    palette = [t["accent"], t["accent2"], t["amber"], t["green"], t["red"], t["textm"]]
-    node_colors = [palette[i % len(palette)] for i in range(len(data["labels"]))]
+    node_colors = [theme.categorical_color(i) for i in range(len(data["labels"]))]
     link_colors = [theme.rgba(node_colors[s], 0.35) for s in data["source"]]
 
     fig = go.Figure(
@@ -589,10 +581,6 @@ def sankey_figure(
             textfont=dict(color=t["text"], size=theme.FONT["chart"]+1),
         )
     )
-    fig.update_layout(
-        margin=dict(l=4, r=4, t=8, b=8),
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(size=theme.FONT["chart"], color=t["text2"]),
-    )
+    apply_chart_theme(fig, height=height, axes=False)
+    fig.update_layout(margin=dict(l=4, r=4, t=8, b=8))
     return fig

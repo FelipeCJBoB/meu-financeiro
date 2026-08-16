@@ -8,7 +8,7 @@ from app.models import Category, CategoryKind
 from app.services import budgets as budgets_service
 from app.services import categories as categories_service
 from app.services.money import format_brl, format_month_label, previous_month, to_cents
-from app.ui import components
+from app.ui import charts, components
 from app.ui.charts import budget_comparison_figure, budget_history_figure
 from app.ui.layout import page_frame
 
@@ -66,7 +66,7 @@ def _category_row(category, month: str, cycle_start_day: int) -> None:
 
     with ui.column().style("width:100%;gap:6px;margin-bottom:16px"):
         with ui.row().style("width:100%;align-items:center;gap:10px"):
-            components.category_chip(category.icon, category.color, size="26px")
+            components.category_chip(category.icon, theme.category_color(category), size="26px")
             name_label = ui.label(category.name).style(
                 f"font-size:15px;color:{theme.var('text')};flex:1;cursor:pointer"
             )
@@ -139,7 +139,7 @@ def _unbudgeted_section(month: str, cycle_start_day: int) -> None:
                 f"width:100%;align-items:center;gap:10px;padding:8px 0;"
                 f"border-bottom:0.5px solid {theme.var('border')}"
             ):
-                components.category_chip(category.icon, category.color, size="26px")
+                components.category_chip(category.icon, theme.category_color(category), size="26px")
                 with ui.column().style("flex:1;gap:0"):
                     ui.label(category.name).style(f"font-size:15px;color:{theme.var('text')}")
                     ui.label(f"Gasto neste ciclo: {format_brl(row['spent_cents'])}").style(
@@ -258,7 +258,7 @@ def render() -> None:
                             "vermelho estourado)."
                         ),
                     )
-                    ui.plotly(budget_comparison_figure(month, cycle_start_day)).style("width:100%")
+                    charts.plot(budget_comparison_figure(month, cycle_start_day))
 
             with components.card():
                 components.section_label(
@@ -268,9 +268,9 @@ def render() -> None:
                         "ajuste o limite em vez de brigar com ele."
                     ),
                 )
-                ui.plotly(
-                    budget_history_figure(month, cycle_start_day, height=200)
-                ).style("width:100%;height:200px")
+                charts.plot(
+                    budget_history_figure(month, cycle_start_day, height=200), height=200
+                )
 
         with components.card():
             components.section_label(

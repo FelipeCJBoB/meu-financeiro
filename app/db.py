@@ -30,16 +30,35 @@ def _set_sqlite_pragma(dbapi_connection, _record):
     cursor.close()
 
 
-DEFAULT_CATEGORIES: list[tuple[str, str, str, CategoryKind]] = [
-    ("Moradia", "home", "#5b8dc7", CategoryKind.expense),
-    ("Mercado", "shopping_cart", "#d98764", CategoryKind.expense),
-    ("Transporte", "directions_car", "#4faf97", CategoryKind.expense),
-    ("Lazer", "movie", "#c99a3e", CategoryKind.expense),
-    ("Saude", "favorite", "#d47ba0", CategoryKind.expense),
-    ("Educacao", "school", "#7ea854", CategoryKind.expense),
-    ("Salario", "account_balance", "#4faf97", CategoryKind.income),
-    ("Outras receitas", "paid", "#5b8dc7", CategoryKind.income),
+# Slot in the themed categorical ramp, not a hex: see design.CATEGORICAL. The
+# hex kept alongside is only a fallback for code paths that read `color` raw.
+# The old seed handed #4faf97 to both Transporte and Salario, and #5b8dc7 to
+# both Moradia and Outras receitas, so colour stopped identifying a category -
+# distinct slots are what fixes that.
+DEFAULT_CATEGORIES: list[tuple[str, str, int, CategoryKind]] = [
+    ("Moradia", "home", 0, CategoryKind.expense),
+    ("Mercado", "shopping_cart", 1, CategoryKind.expense),
+    ("Transporte", "directions_car", 2, CategoryKind.expense),
+    ("Lazer", "movie", 3, CategoryKind.expense),
+    ("Saude", "favorite", 5, CategoryKind.expense),
+    ("Educacao", "school", 4, CategoryKind.expense),
+    ("Salario", "account_balance", 6, CategoryKind.income),
+    ("Outras receitas", "paid", 7, CategoryKind.income),
 ]
+
+# What the seed used to write. A category still carrying one of these was never
+# recoloured by hand, so the backfill may safely adopt it into a slot; anything
+# else is a deliberate choice and is left untouched.
+LEGACY_SEED_COLORS = {
+    "Moradia": "#5b8dc7",
+    "Mercado": "#d98764",
+    "Transporte": "#4faf97",
+    "Lazer": "#c99a3e",
+    "Saude": "#d47ba0",
+    "Educacao": "#7ea854",
+    "Salario": "#4faf97",
+    "Outras receitas": "#5b8dc7",
+}
 
 
 MIGRATIONS: list[tuple[str, str, str]] = [
@@ -50,6 +69,7 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("settings", "theme_name", "TEXT DEFAULT 'linen'"),
     ("transactions", "balance_after_cents", "INTEGER"),
     ("transactions", "already_settled", "INTEGER DEFAULT 0"),
+    ("categories", "color_slot", "INTEGER"),
 ]
 
 
@@ -145,6 +165,30 @@ def _backfill_adjustment_anchors(session: Session) -> None:
         session.commit()
 
 
+def _backfill_category_slots(session: Session) -> None:
+    """Adopt the untouched default categories into the themed ramp.
+
+    Only categories that still carry the exact colour the old seed wrote are
+    migrated: that is the evidence the user never picked a colour there. A
+    category with any other colour keeps a NULL slot and goes on rendering its
+    own hex, so nobody's choice is overwritten. Idempotent - a category that
+    already has a slot is skipped."""
+    from app.db import DEFAULT_CATEGORIES as defaults
+
+    slots = {name: slot for name, _icon, slot, _kind in defaults}
+    categories = session.exec(select(Category).where(Category.color_slot.is_(None))).all()
+    changed = False
+    for category in categories:
+        legacy = LEGACY_SEED_COLORS.get(category.name)
+        if legacy is None or category.color.lower() != legacy.lower():
+            continue
+        category.color_slot = slots[category.name]
+        session.add(category)
+        changed = True
+    if changed:
+        session.commit()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _run_migrations()
@@ -152,14 +196,25 @@ def init_db() -> None:
         _seed_categories(session)
         _backfill_goal_contributions(session)
         _backfill_adjustment_anchors(session)
+        _backfill_category_slots(session)
 
 
 def _seed_categories(session: Session) -> None:
+    from app import design
+
     existing = session.exec(select(Category)).first()
     if existing is not None:
         return
-    for name, icon, color, kind in DEFAULT_CATEGORIES:
-        session.add(Category(name=name, icon=icon, color=color, kind=kind))
+    for name, icon, slot, kind in DEFAULT_CATEGORIES:
+        session.add(
+            Category(
+                name=name,
+                icon=icon,
+                color=design.CATEGORICAL["linen"][slot],
+                color_slot=slot,
+                kind=kind,
+            )
+        )
     session.commit()
 
 

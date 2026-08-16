@@ -15,7 +15,7 @@ from app.services.money import (
     period_bounds,
     previous_month,
 )
-from app.ui import components
+from app.ui import charts, components
 from app.ui.charts import (
     cashflow_trend_figure,
     category_trend_figure,
@@ -42,7 +42,7 @@ def _transaction_row(session, tx) -> None:
             category = session.get(Category, tx.category_id) if tx.category_id else None
             components.category_chip(
                 category.icon if category else "receipt_long",
-                category.color if category else theme.current()["textm"],
+                theme.category_color(category) if category else theme.current()["textm"],
             )
             sub = category.name if category else "Sem categoria"
 
@@ -487,20 +487,19 @@ def render() -> None:
                                 "primeiro acesso de cada mes."
                             ),
                         )
-                        ui.plotly(net_worth_figure(height=180, months=chart_months)).style(
-                            "width:100%;height:180px"
-                        )
+                        charts.plot(net_worth_figure(height=180, months=chart_months), height=180)
 
                     with components.card():
                         components.section_label(
                             "Receitas vs. despesas por mes",
                             help_text="Ciclos cobertos pelo periodo selecionado, ancorados no mes em exibicao.",
                         )
-                        ui.plotly(
+                        charts.plot(
                             monthly_comparison_figure(
                                 month, cycle_start_day, height=180, months=chart_months
-                            )
-                        ).style("width:100%;height:180px")
+                            ),
+                            height=180,
+                        )
 
                 history_months = max(12, chart_months)
                 with components.panel_grid():
@@ -512,11 +511,12 @@ def render() -> None:
                                 "sobrou dinheiro, para baixo o mes fechou no vermelho."
                             ),
                         )
-                        ui.plotly(
+                        charts.plot(
                             cashflow_trend_figure(
                                 month, cycle_start_day, height=200, months=history_months
-                            )
-                        ).style("width:100%;height:200px")
+                            ),
+                            height=200,
+                        )
 
                     with components.card():
                         components.section_label(
@@ -526,11 +526,12 @@ def render() -> None:
                                 "marca 20%, referencia comum de disciplina financeira."
                             ),
                         )
-                        ui.plotly(
+                        charts.plot(
                             savings_rate_trend_figure(
                                 month, cycle_start_day, height=200, months=history_months
-                            )
-                        ).style("width:100%;height:200px")
+                            ),
+                            height=200,
+                        )
 
                 category_trend = category_trend_figure(
                     month, cycle_start_day, height=240, months=max(6, chart_months)
@@ -544,7 +545,7 @@ def render() -> None:
                                 "achar a categoria que cresceu sem voce perceber."
                             ),
                         )
-                        ui.plotly(category_trend).style("width:100%;height:240px")
+                        charts.plot(category_trend, height=240)
 
                 with components.panel_grid():
                     _upcoming_payments_section(session)
@@ -583,7 +584,7 @@ def render() -> None:
                         f"Para onde foi o dinheiro · {period_label}",
                         help_text="Receita ate a conta, e da conta ate despesas, transferencias e sobra.",
                     )
-                    ui.plotly(sankey).style("width:100%;height:260px")
+                    charts.plot(sankey, height=260)
 
             with components.card():
                 components.section_label(f"Lancamentos · {period_label}")

@@ -504,7 +504,7 @@ def _row(session, tx) -> None:
             category = session.get(Category, tx.category_id) if tx.category_id else None
             components.category_chip(
                 category.icon if category else "receipt_long",
-                category.color if category else theme.current()["textm"],
+                theme.category_color(category) if category else theme.current()["textm"],
             )
             sub = category.name if category else "Dividido em categorias"
             if tx.already_settled:
